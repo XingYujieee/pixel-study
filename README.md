@@ -10,7 +10,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-11%2B-27362B?style=flat-square) ![Tauri](https://img.shields.io/badge/Tauri-2-6B805D?style=flat-square) ![React](https://img.shields.io/badge/React-19-BF8A54?style=flat-square) ![Local first](https://img.shields.io/badge/Local--first-你的文件属于你-8A6850?style=flat-square)
 
-[开始使用](#开始使用) · [探索书房](#一间真正能用的书房) · [文件与-obsidian](#文件与-obsidian) · [开发与测试](#开发与测试)
+[开始使用](#开始使用) · [探索书房](#一间真正能用的书房) · [文件与 Obsidian](#文件与-obsidian) · [开发与测试](#开发与测试)
 
 </div>
 
