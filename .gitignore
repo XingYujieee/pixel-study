@@ -1,0 +1,11 @@
+node_modules/
+dist/
+target/
+src-tauri/gen/
+test-vault/
+*.log
+.DS_Store
+
+.dl/
+像素书房.app/
+*.patch

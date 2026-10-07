@@ -1,0 +1,38 @@
+[workspace]
+members = [".", "crates/vault-core", "crates/ai-core"]
+
+[package]
+name = "pixel-study"
+version = "0.1.0"
+description = "第一人称像素书房笔记软件"
+edition = "2021"
+
+[lib]
+name = "pixel_study_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+vault-core = { path = "crates/vault-core" }
+ai-core = { path = "crates/ai-core" }
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# API 密钥保存在 macOS 钥匙串
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# 其他平台（开发与测试）：内存存储
+keyring = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

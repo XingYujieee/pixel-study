@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口权限：只开放文件对话框与事件；文件读写全部走自定义命令并在 Rust 侧校验库边界。",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-cursor-grab",
+    "core:window:allow-set-cursor-visible",
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-unmaximize",
+    "core:window:allow-current-monitor",
+    "core:window:allow-set-focus"
+  ]
+}

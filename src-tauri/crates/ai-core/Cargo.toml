@@ -1,0 +1,15 @@
+[package]
+name = "ai-core"
+version = "0.1.0"
+edition = "2021"
+description = "像素书房 AI 工作台：Claude 与 OpenAI 兼容接口的流式问答"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "http2"] }
+futures-util = "0.3"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
