@@ -1,5 +1,5 @@
 // 编辑器命令：把 mdFormat 的纯函数变成一次可撤销的修改。快捷键、斜杠菜单、选中工具条、表格工具条都调用这里。
-import { EditorSelection, type ChangeSpec } from "@codemirror/state";
+import { EditorSelection, Text, type ChangeSpec } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import {
   cellEnd,
@@ -31,7 +31,7 @@ export function wrapCmd(kind: InlineKind) {
       return true;
     }
     const r = toggleWrap(view.state.doc.toString(), r0.from, r0.to, open, close);
-    view.dispatch({ changes: r.edits, selection: EditorSelection.range(r.anchor, r.head), scrollIntoView: true, userEvent: "input.format" });
+    view.dispatch({ changes: r.edits.map((edit) => ({ ...edit, insert: Text.of(edit.insert.split("\n")) })), selection: EditorSelection.range(r.anchor, r.head), scrollIntoView: true, userEvent: "input.format" });
     return true;
   };
 }
@@ -42,7 +42,7 @@ export function colorCmd(color: string | null) {
     const r0 = view.state.selection.main;
     if (r0.empty) return false;
     const r = setColor(view.state.doc.toString(), r0.from, r0.to, color);
-    view.dispatch({ changes: r.edits, selection: EditorSelection.range(r.anchor, r.head), userEvent: "input.format" });
+    view.dispatch({ changes: r.edits.map((edit) => ({ ...edit, insert: Text.of(edit.insert.split("\n")) })), selection: EditorSelection.range(r.anchor, r.head), userEvent: "input.format" });
     return true;
   };
 }
@@ -57,7 +57,8 @@ export function blockCmd(kind: BlockKind) {
     const lines: string[] = [];
     for (let n = firstL.number; n <= lastL.number; n++) lines.push(state.doc.line(n).text);
     const next = setBlocks(lines, kind);
-    const text = next.join(state.lineBreak);
+    // CodeMirror positions count each line break as one, even in CRLF files.
+    const text = state.toText(next.join(state.lineBreak));
     // 单行时光标离行尾的距离不变
     const selection =
       lines.length === 1 && r.empty
@@ -90,12 +91,12 @@ export function insertBlock(view: EditorView, text: string, caret = text.length)
   const line = state.doc.lineAt(r.from);
   const br = state.lineBreak;
   const t = text.replace(/\n/g, br);
-  const c = caret + (text.slice(0, caret).match(/\n/g)?.length ?? 0) * (br.length - 1);
+  const c = caret;
   if (!line.text.trim()) {
     view.dispatch({ changes: { from: line.from, to: line.to, insert: t }, selection: EditorSelection.cursor(line.from + c), scrollIntoView: true, userEvent: "input" });
   } else {
     const ins = br + br + t;
-    view.dispatch({ changes: { from: line.to, insert: ins }, selection: EditorSelection.cursor(line.to + br.length * 2 + c), scrollIntoView: true, userEvent: "input" });
+    view.dispatch({ changes: { from: line.to, insert: ins }, selection: EditorSelection.cursor(line.to + 2 + c), scrollIntoView: true, userEvent: "input" });
   }
   view.focus();
 }
@@ -135,7 +136,7 @@ function rewriteTable(view: EditorView, t: NonNullable<ReturnType<typeof tableAt
   const text = lines.join(br);
   let pos = t.from;
   const r = Math.max(0, Math.min(lines.length - 1, row === 1 ? 2 : row));
-  for (let i = 0; i < r; i++) pos += lines[i].length + br.length;
+  for (let i = 0; i < r; i++) pos += lines[i].length + 1;
   const k = Math.max(0, Math.min(col, splitRow(lines[0]).length - 1));
   const a = pos + cellStart(lines[r], k);
   const b = pos + cellEnd(lines[r], k);

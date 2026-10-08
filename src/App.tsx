@@ -1,7 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 import { saveLayoutNow, startup } from "./app/actions";
-import { saveCurrent, saveEverything } from "./app/editor";
+import { controller, word, saveCurrent, saveEverything } from "./app/editor";
 import { useApp } from "./app/store";
 import { enterFocus, exitFocus, getEngine } from "./app/worldActions";
 import { useWorld } from "./app/worldStore";
@@ -21,6 +21,7 @@ import { WorldView } from "./ui/world/WorldView";
 
 export function App() {
   const vault = useApp((s) => s.vault);
+  const switchingVault = useApp((s) => s.switchingVault);
   const mode = useWorld((s) => s.mode);
   const focus = mode === "focus";
 
@@ -37,6 +38,7 @@ export function App() {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey) return;
       const s = useApp.getState();
+      if (s.switchingVault) return;
       if (!s.vault) return;
       const k = e.key.toLowerCase();
       const w = useWorld.getState();
@@ -72,17 +74,26 @@ export function App() {
 
     // 关闭窗口前写完所有未保存内容和书房布局
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     getCurrentWindow()
-      .onCloseRequested(async () => {
+      .onCloseRequested(async (event) => {
         await Promise.all([saveEverything(), saveLayoutNow()]);
+        if (controller.hasUnsaved() || word.hasUnsaved()) {
+          event.preventDefault();
+          useApp.getState().toast("仍有未保存内容，请先处理保存错误或冲突后再关闭。", "error");
+        }
       })
-      .then((u) => (unlisten = u))
+      .then((u) => {
+        if (disposed) u();
+        else unlisten = u;
+      })
       .catch(() => {});
 
     // 从 Finder 拖文件进窗口（整个应用只注册一次）
     void listenDragDrop();
 
     return () => {
+      disposed = true;
       window.removeEventListener("keydown", onKey, true);
       unlisten?.();
     };
@@ -98,7 +109,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" inert={switchingVault} aria-busy={switchingVault}>
       <WorldView hidden={focus} />
       {focus && (
         <div className="focus-layer">

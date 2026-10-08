@@ -108,7 +108,7 @@ export class EditorController {
   moveTo(parent: HTMLElement) {
     if (this.view.dom.parentElement === parent) return;
     const snapshot = this.view.scrollSnapshot();
-    parent.appendChild(this.view.dom);
+    parent.replaceChildren(this.view.dom);
     this.view.dispatch({ effects: snapshot });
   }
 
@@ -190,6 +190,8 @@ export class EditorController {
     clearTimeout(d.autosaveTimer);
     clearTimeout(d.draftTimer);
     if (this.active === path) {
+      d.state = this.view.state;
+      d.scroll = this.view.scrollSnapshot();
       this.active = null;
       this.view.setState(EditorState.create({ doc: "" }));
     }
@@ -202,7 +204,7 @@ export class EditorController {
     const doc = this.view.state.doc;
     const sep = this.view.state.lineBreak;
     const lead = doc.length === 0 ? "" : doc.sliceString(doc.length - 1) === sep.slice(-1) ? sep : sep + sep;
-    const insert = (lead + text.replace(/\r?\n/g, sep)).replace(/\s*$/, "") + sep;
+    const insert = this.view.state.toText((lead + text.replace(/\r?\n/g, sep)).replace(/\s*$/, "") + sep);
     this.view.dispatch({ changes: { from: doc.length, insert }, selection: { anchor: doc.length + insert.length }, scrollIntoView: true });
   }
 
@@ -295,7 +297,7 @@ export class EditorController {
       return d.saving;
     }
     const st = this.stateOf(d);
-    if (st.doc.eq(d.savedDoc)) {
+    if (st.doc.eq(d.savedDoc) && d.baseHash !== null) {
       if (d.info.status !== "clean") this.setStatus(d, "clean");
       return Promise.resolve();
     }
@@ -511,10 +513,19 @@ export class EditorController {
   }
 
   destroy() {
+    this.reset();
+    this.view.destroy();
+  }
+
+  /** 已保存后切换库：取消旧会话计时器，不能让相同相对路径复用旧库正文。 */
+  reset() {
     for (const d of this.docs.values()) {
       clearTimeout(d.autosaveTimer);
       clearTimeout(d.draftTimer);
     }
-    this.view.destroy();
+    this.docs.clear();
+    this.active = null;
+    this.view.setState(EditorState.create({ doc: "" }));
+    this.notify();
   }
 }

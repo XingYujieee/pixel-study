@@ -173,7 +173,7 @@ export type BookType = "md" | "docx" | "txt";
 /** 用工作台做一本新书。template 为模板（鱼饵）编号，默认空白。 */
 export async function craftBook(type: BookType, name: string, shelfId: string | null, template = "builtin:blank"): Promise<string | null> {
   const shelf = shelfId ? furniture(shelfId)?.shelf : undefined;
-  const dir = shelf?.mode === "folder" ? shelf.folder || null : null;
+  const dir = shelf?.mode === "folder" ? shelf.folder ?? "" : null;
   try {
     let entry: FileEntry;
     if (type === "txt" && template === "builtin:blank") entry = await api.fileCreate(dir ?? null, name, "txt", new Uint8Array());

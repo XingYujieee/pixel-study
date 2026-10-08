@@ -28,6 +28,39 @@ fn keep_both_name(dir: &Path, name: &str) -> String {
         .expect("无限序列")
 }
 
+/// 把同目录下的临时文件以"不覆盖"的方式落到 `name`（被占用则依次尝试"名称 (n)"）。
+/// 用硬链接实现原子的"不存在才创建"；文件系统不支持硬链接时退回到先检查再改名。
+fn commit_no_clobber(tmp: &Path, parent: &Path, name: &str) -> Result<PathBuf> {
+    let mut candidate = parent.join(name);
+    for _ in 0..10_000 {
+        match fs::hard_link(tmp, &candidate) {
+            Ok(()) => {
+                let _ = fs::remove_file(tmp);
+                return Ok(candidate);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                candidate = parent.join(keep_both_name(parent, name));
+            }
+            Err(_) => {
+                if candidate.symlink_metadata().is_ok() {
+                    candidate = parent.join(keep_both_name(parent, name));
+                    continue;
+                }
+                fs::rename(tmp, &candidate)?;
+                return Ok(candidate);
+            }
+        }
+    }
+    let _ = fs::remove_file(tmp);
+    Err(VaultError::InvalidPath(format!("同名文件太多：{name}")))
+}
+
+fn tmp_name(name: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    format!(".{}.import-{}-{}", name, std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed))
+}
+
 /// `sources` 为外部绝对路径；`target_dir` 为库内相对目录（空字符串为库根）。
 /// `keep_both = false` 时只要有同名就整体返回 Conflicts，不复制任何文件。
 pub fn import_files(vault: &Vault, sources: &[PathBuf], target_dir: &str, keep_both: bool) -> Result<ImportOutcome> {
@@ -56,11 +89,11 @@ pub fn import_files(vault: &Vault, sources: &[PathBuf], target_dir: &str, keep_b
     fs::create_dir_all(&dir_abs)?;
     let mut imported = vec![];
     for (src, name) in plan {
-        let final_name = if dir_abs.join(&name).exists() { keep_both_name(&dir_abs, &name) } else { name };
-        let target = dir_abs.join(&final_name);
+        let tmp = dir_abs.join(tmp_name(&name));
         let bytes = fs::read(&src)?;
-        write_atomic(&target, &bytes, |_| {})?;
-        let rel = vault.rel_of(&target).ok_or_else(|| VaultError::OutsideVault(final_name.clone()))?;
+        write_atomic(&tmp, &bytes, |_| {})?;
+        let target = commit_no_clobber(&tmp, &dir_abs, &name)?;
+        let rel = vault.rel_of(&target).ok_or_else(|| VaultError::OutsideVault(name.clone()))?;
         imported.push(rel);
     }
     Ok(ImportOutcome::Done { imported })
@@ -114,6 +147,10 @@ pub fn import_tree(vault: &Vault, sources: &[PathBuf], target_dir: &str) -> Resu
             report.skipped += 1;
             continue;
         }
+        // 拖入的是库的上级目录：会把库复制进自己，拒绝
+        if !inside && root.starts_with(&real) {
+            return Err(VaultError::InvalidPath(format!("不能导入包含书房本身的文件夹：{}", real.display())));
+        }
         // 文件夹：目标里已有同名文件夹时整个改名，不与已有内容混在一起
         let folder = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "导入".into());
         let folder = if !inside && dir_abs.join(&folder).exists() { keep_both_name(&dir_abs, &folder) } else { folder };
@@ -158,19 +195,17 @@ pub fn import_tree(vault: &Vault, sources: &[PathBuf], target_dir: &str) -> Resu
         let parent = vault.resolve(&parent_rel)?;
         fs::create_dir_all(&parent)?;
         let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        if target.exists() {
-            target = parent.join(keep_both_name(&parent, &name));
+        // 复制到同目录的隐藏临时文件，再以不覆盖的方式落盘：不会留下写了一半的文件，也不会盖掉别人刚写的文件
+        let tmp = parent.join(tmp_name(&name));
+        if let Err(e) = fs::copy(&src, &tmp) {
+            let _ = fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        let final_path = commit_no_clobber(&tmp, &parent, &name)?;
+        if final_path != target {
             report.renamed += 1;
         }
-        // 复制到同目录的隐藏临时文件，再改名：不会留下写了一半的文件
-        let tmp = parent.join(format!(".{}.import-{}", name, std::process::id()));
-        fs::copy(&src, &tmp)?;
-        if target.exists() {
-            let _ = fs::remove_file(&tmp);
-            target = parent.join(keep_both_name(&parent, &name));
-            fs::copy(&src, &tmp)?;
-        }
-        fs::rename(&tmp, &target)?;
+        target = final_path;
         if let Some(r) = vault.rel_of(&target) {
             report.imported.push(r);
         }
@@ -246,6 +281,27 @@ mod tests {
         let r = import_tree(&v, &[v_root.join("读书/论文")], "").unwrap();
         assert!(r.imported.is_empty());
         assert_eq!(r.in_vault.len(), 2);
+    }
+
+    #[test]
+    fn refuses_folder_that_contains_the_vault() {
+        let d = tempfile::tempdir().unwrap();
+        fs::create_dir_all(d.path().join("家/书房")).unwrap();
+        fs::write(d.path().join("家/a.txt"), "a").unwrap();
+        let v = Vault::open(d.path().join("家/书房")).unwrap();
+        assert!(import_tree(&v, &[d.path().join("家")], "").is_err());
+        assert_eq!(fs::read_dir(d.path().join("家/书房")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn commit_never_overwrites() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("a.md"), "旧").unwrap();
+        fs::write(d.path().join(".tmp"), "新").unwrap();
+        let p = commit_no_clobber(&d.path().join(".tmp"), d.path(), "a.md").unwrap();
+        assert_eq!(p.file_name().unwrap(), "a (1).md");
+        assert_eq!(fs::read_to_string(d.path().join("a.md")).unwrap(), "旧");
+        assert!(!d.path().join(".tmp").exists());
     }
 
     #[test]

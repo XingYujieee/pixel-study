@@ -39,7 +39,6 @@ export function onVaultLoaded(fn: () => void): () => void {
 /** 打开库：开始监听事件、扫描、读取最近、草稿与书房布局。 */
 export async function loadVault(info: VaultInfo) {
   const s = useApp.getState();
-  await saveEverything();
   s.setVault(info);
   useWorld.getState().setLayout(null);
   useWorld.getState().setMode("idle");
@@ -82,13 +81,36 @@ export async function startup() {
   }
 }
 
+const beforeVaultChange = new Set<() => Promise<void>>();
+export function onBeforeVaultChange(fn: () => Promise<void>) {
+  beforeVaultChange.add(fn);
+  return () => beforeVaultChange.delete(fn);
+}
+
 export async function chooseVault() {
+  if (useApp.getState().switchingVault) return;
   const picked = await openDialog({ directory: true, multiple: false, title: "选择笔记库文件夹（可以是现有的 Obsidian 库或文稿里的文件夹）" });
   if (typeof picked !== "string") return;
+  if (useApp.getState().switchingVault) return;
+  useApp.setState({ switchingVault: true });
   try {
-    await loadVault(await api.vaultOpen(picked));
+    // 后端命令按当前库解析相对路径，必须在 vaultOpen 之前完成旧库的写入。
+    await saveEverything();
+    if (controller.hasUnsaved() || word.hasUnsaved()) {
+      throw new Error("当前库仍有未保存内容，请先处理保存错误或冲突，再切换笔记库。");
+    }
+    await saveLayoutNow();
+    for (const fn of beforeVaultChange) await fn();
+    controller.reset();
+    word.reset();
+    await api.vaultOpen(picked);
+    // 重建整个前端，隔离编辑器、AI 附件、撤销操作和空间状态中的旧库引用。
+    window.location.reload();
   } catch (e) {
     useApp.getState().toast(errorMessage(e), "error");
+    const selected = useApp.getState().selected;
+    if (selected) await openPath(selected, { remember: false });
+    useApp.setState({ switchingVault: false });
   }
 }
 

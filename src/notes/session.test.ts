@@ -207,6 +207,59 @@ describe("EditorController", () => {
     await wait(60);
     expect(fs.saves).toHaveLength(0);
   });
+
+  it("关闭冲突文档再打开仍保留本地修改和撤销历史", async () => {
+    await c.open("a.md");
+    type(c, "未保存的本地修改");
+    fs.files.set("a.md", "外部版本");
+    await c.saveNow();
+    await c.close("a.md");
+    await c.open("a.md");
+    expect(c.activeText()).toBe("# 标题\n正文未保存的本地修改");
+    expect(c.info("a.md")!.status).toBe("conflict");
+    undo(c.view);
+    expect(c.activeText()).toBe("# 标题\n正文");
+  });
+
+  it("向 CRLF 笔记追加多段内容时光标不越界并保留换行", async () => {
+    fs.files.set("a.md", "第一行\r\n第二行");
+    await c.open("a.md");
+    c.appendText("新增一段\n\n新增二段");
+    expect(c.view.state.selection.main.head).toBe(c.view.state.doc.length);
+    await c.saveNow();
+    expect(fs.files.get("a.md")).toBe("第一行\r\n第二行\r\n\r\n新增一段\r\n\r\n新增二段\r\n");
+  });
+
+  it("明确重新创建已删除的空文件", async () => {
+    fs.files.set("empty.txt", "");
+    await c.open("empty.txt");
+    fs.files.delete("empty.txt");
+    await c.handleEvents([{ kind: "removed", path: "empty.txt" }]);
+    await c.recreate("empty.txt");
+    expect(fs.files.has("empty.txt")).toBe(true);
+    expect(c.info("empty.txt")!.status).toBe("clean");
+  });
+
+  it("切库清空会话后同名文件重新读取，不复用上一库正文", async () => {
+    await c.open("a.md");
+    c.reset();
+    fs.files.set("a.md", "另一个库的正文");
+    await c.open("a.md");
+    expect(c.activeText()).toBe("另一个库的正文");
+    expect(c.hasUnsaved()).toBe(false);
+  });
+
+  it("切换编辑器类型时移除容器里的旧编辑器，保留自身正文与撤销", async () => {
+    await c.open("a.md");
+    type(c, "新内容");
+    const host = document.createElement("div");
+    host.appendChild(document.createElement("div"));
+    c.moveTo(host);
+    expect([...host.children]).toEqual([c.view.dom]);
+    expect(c.activeText()).toContain("新内容");
+    undo(c.view);
+    expect(c.activeText()).toBe("# 标题\n正文");
+  });
 });
 
 function entry(path: string) {

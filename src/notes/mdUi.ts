@@ -6,6 +6,7 @@ import { Prec, StateEffect, StateField, type EditorState, type Extension } from 
 import { EditorView, keymap, showTooltip, ViewPlugin, type Tooltip, type TooltipView, type ViewUpdate } from "@codemirror/view";
 import { blockCmd, colorCmd, filterSlash, insertTable, tableAt, tableOpCmd, tableTab, TEXT_COLORS, todoToggleCmd, wrapCmd, type SlashItem } from "./mdCommands";
 import { blockOf, type BlockKind, type TableOp } from "./mdFormat";
+import { isLiteralMarkdown } from "./mdContext";
 
 // ───────────── 斜杠菜单 ─────────────
 
@@ -74,7 +75,7 @@ const slashTrigger = ViewPlugin.fromClass(
       if (ch === "、" ? !atStart : !atStart && /[A-Za-z0-9:/._\-~]/.test(before)) return;
       // 代码块里不弹
       const line = u.state.doc.lineAt(hit).text;
-      if (/^\s*(```|~~~)/.test(line)) return;
+      if (/^\s*(```|~~~)/.test(line) || isLiteralMarkdown(u.state, hit)) return;
       const view = u.view;
       queueMicrotask(() => view.dispatch({ effects: setSlash.of({ from: hit, query: "", sel: 0, table: false }) }));
     }

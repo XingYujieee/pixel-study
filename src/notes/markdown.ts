@@ -1,5 +1,5 @@
 // Markdown → 安全 HTML。支持基础 Wikilink、图片嵌入；YAML 属性单独显示；本地图片转为 asset 协议地址。
-import DOMPurify from "dompurify";
+import { safeHtml } from "../lib/sanitize";
 import { Marked, type TokenizerAndRendererExtension } from "marked";
 import { resolveRelative } from "../lib/paths";
 import { parseWikilink, type LinkResolution } from "../lib/links";
@@ -110,8 +110,8 @@ export function renderMarkdown(md: string, ctx: RenderContext): string {
     html += `<details class="frontmatter"><summary>属性</summary><pre>${escapeHtml(frontmatter)}</pre></details>`;
   }
   html += calloutHtml(marked.parse(body, { async: false }) as string);
-  return DOMPurify.sanitize(html, {
-    ADD_ATTR: ["data-path", "data-target", "data-external", "target"],
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|asset|data):|http:\/\/asset\.localhost|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+  return safeHtml(html, {
+    addAttr: ["data-path", "data-target", "data-external", "target"],
+    uriRegexp: /^(?:(?:https?|asset|data):|http:\/\/asset\.localhost|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   });
 }

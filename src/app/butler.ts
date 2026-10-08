@@ -132,6 +132,11 @@ export function setButler(patchB: Partial<{ name: string; kind: BirdKind }>) {
 }
 
 export function resetButlerChat() {
+  // 还在等「好 / 不要」的确认一律当作不要，免得对话一直卡在忙
+  for (const [id, fn] of [...pending]) {
+    pending.delete(id);
+    fn(false);
+  }
   set({ messages: [], history: [] });
 }
 
@@ -285,12 +290,14 @@ async function organizeShelves(): Promise<Result> {
 }
 
 async function createNote(folder: string, title: string, content: string): Promise<Result> {
-  const name = title.trim().replace(/[\\/:*?"<>|]/g, " ").slice(0, 80) || "新笔记";
+  // 文件名里不能带别的扩展名（"报告.docx" 会被当成 Word）
+  const name = title.trim().replace(/[\\/:*?"<>|]/g, " ").replace(/\.(md|markdown|txt|docx)$/i, "").slice(0, 80) || "新笔记";
   const dir = folder.trim().replace(/^\/+|\/+$/g, "");
   const ok = await askConfirm(`新建笔记《${name}》？`, `放在 ${dir || "库根目录"}，${content.length} 字。`);
   if (!ok) return { text: "用户没同意，没有新建" };
   try {
-    const entry = await api.fileCreate(dir || null, name, "md", new TextEncoder().encode(content));
+    // 空串表示库根目录（null 会被当成默认的 Notes/）
+    const entry = await api.fileCreate(dir, name, "md", new TextEncoder().encode(content));
     useApp.getState().applyEvents([{ kind: "created", entry }]);
     getEngine()?.refreshBooks();
     return { text: `建好了：${entry.path}（${whereText(entry.path)}）`, actions: [{ label: "打开", run: () => void takeBook(entry.path) }] };
@@ -498,7 +505,8 @@ export const TOOLS: ToolSpec[] = [
   { name: "music", description: "背景音乐：play 放一首（style: piano/musicbox/ambient/waltz/lofi/folk 可选），stop 停下。", parameters: obj({ action: { type: "string", enum: ["play", "stop"] }, style: { type: "string" } }, ["action"]) },
 ];
 
-async function runTool(name: string, input: Record<string, unknown>): Promise<Result> {
+/** viaModel：是大模型发起的调用（会写文件的一律先问） */
+async function runTool(name: string, input: Record<string, unknown>, viaModel = false): Promise<Result> {
   switch (name) {
     case "search_notes": {
       const list = await findFiles(String(input.query ?? ""), Math.min(20, Number(input.limit) || 8));
@@ -547,7 +555,9 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<Re
     case "move_note":
       return moveNote(String(input.path ?? ""), String(input.to_folder ?? ""));
     case "capture_idea": {
-      const p = await castIdea(String(input.text ?? ""));
+      const text = String(input.text ?? "");
+      if (viaModel && !(await askConfirm("记进鱼塘？", `「${text.slice(0, 60)}${text.length > 60 ? "…" : ""}」会存成 Inbox/ 里的一篇笔记。`))) return { text: "用户没同意，没有记" };
+      const p = await castIdea(text);
       return { text: p ? `记进鱼塘了：${p}` : "没记上" };
     }
     case "garden":
@@ -653,7 +663,9 @@ async function runIntent(intent: Intent) {
 }
 
 async function agentLoop(t: string) {
-  let history = trimHistory([...get().history, { role: "user", text: t }]);
+  // 出错时回到这句话之前，不留下没有结果的工具调用（否则之后每次请求都会被服务商拒绝）
+  const before = get().history;
+  let history = trimHistory([...before, { role: "user", text: t }]);
   for (let round = 0; round < 8; round++) {
     let reply;
     try {
@@ -664,7 +676,7 @@ async function agentLoop(t: string) {
       // 接不上时退回到固定说法
       const intent = parseIntent(t);
       if (intent && round === 0) await runIntent(intent);
-      set({ history: history.slice(0, -1) });
+      set({ history: before });
       return;
     }
     const calls: ToolCall[] = reply.toolCalls ?? [];
@@ -675,7 +687,7 @@ async function agentLoop(t: string) {
       const note = push({ from: "note", text: `…${toolLabel(c.name)}` });
       let r: Result;
       try {
-        r = await runTool(c.name, c.input ?? {});
+        r = await runTool(c.name, c.input ?? {}, true);
       } catch (e) {
         r = { text: `出错了：${errorMessage(e)}` };
       }

@@ -127,21 +127,25 @@ pub fn create_note(vault: &Vault, dir: Option<&str>, name: &str, content: &str) 
 /// 新建文件（Markdown / TXT / Word）。`default_ext` 在名称不带支持的扩展名时使用。
 pub fn create_file(vault: &Vault, dir: Option<&str>, name: &str, default_ext: &str, bytes: &[u8]) -> Result<String> {
     validate_file_name(name)?;
-    let dir = dir.map(|d| d.trim_matches('/')).filter(|d| !d.is_empty()).unwrap_or("Notes");
+    // None 表示默认 Notes，显式空串表示目录书架绑定的库根目录。
+    let dir = dir.map(|d| d.trim_matches('/')).unwrap_or("Notes");
     let name = name.trim();
+    // 名字里带的扩展名只有和要建的类型一致时才用（"报告.docx" 建 Markdown 时仍是 报告.docx.md，不会写出打不开的 Word）
+    let same_kind = |e: &str| {
+        let e = e.to_ascii_lowercase();
+        let d = default_ext.to_ascii_lowercase();
+        let text = |x: &str| matches!(x, "md" | "markdown" | "txt");
+        e == d || (text(&e) && text(&d))
+    };
     let (stem, ext) = match name.rsplit_once('.') {
-        Some((s, e))
-            if !s.is_empty() && matches!(e.to_ascii_lowercase().as_str(), "md" | "markdown" | "txt" | "docx") =>
-        {
-            (s.to_string(), e.to_string())
-        }
+        Some((s, e)) if !s.is_empty() && same_kind(e) => (s.to_string(), e.to_string()),
         _ => (name.to_string(), default_ext.to_string()),
     };
     let dir_abs = vault.resolve(dir)?;
     fs::create_dir_all(&dir_abs)?;
     for i in 0..1000 {
         let file = if i == 0 { format!("{stem}.{ext}") } else { format!("{stem} {i}.{ext}") };
-        let rel = format!("{dir}/{file}");
+        let rel = if dir.is_empty() { file } else { format!("{dir}/{file}") };
         let abs = vault.resolve(&rel)?;
         match OpenOptions::new().write(true).create_new(true).open(&abs) {
             Ok(mut f) => {
@@ -159,9 +163,17 @@ pub fn create_file(vault: &Vault, dir: Option<&str>, name: &str, default_ext: &s
 /// 把文件移到库内另一个目录（`to_dir` 为空表示库根目录），不覆盖：同名时追加序号。
 /// 用于灵感归档与"放生"到 `.trash/`（Obsidian 的回收站目录，随时可以找回）。返回新的相对路径。
 pub fn move_file(vault: &Vault, from: &str, to_dir: &str) -> Result<String> {
-    let src = vault.resolve(from)?;
+    // 只解析所在文件夹，文件名保持原样：移动符号链接时移的是链接本身，不是它指向的文件
+    let (parent_rel, file_name) = match from.trim_matches('/').rsplit_once('/') {
+        Some((p, n)) => (p, n),
+        None => ("", from.trim_matches('/')),
+    };
+    if file_name.is_empty() || file_name == "." || file_name == ".." {
+        return Err(VaultError::InvalidPath(from.to_string()));
+    }
+    let src = vault.resolve(parent_rel)?.join(file_name);
     let meta = fs::symlink_metadata(&src).map_err(|_| VaultError::NotFound(from.to_string()))?;
-    if !meta.is_file() {
+    if !meta.is_file() && !meta.file_type().is_symlink() {
         return Err(VaultError::InvalidPath(format!("不是普通文件：{from}")));
     }
     let to_dir = to_dir.trim_matches('/');
@@ -180,6 +192,14 @@ pub fn move_file(vault: &Vault, from: &str, to_dir: &str) -> Result<String> {
         let file = if i == 0 { format!("{stem}{ext}") } else { format!("{stem} {i}{ext}") };
         let rel = if to_dir.is_empty() { file } else { format!("{to_dir}/{file}") };
         let dst = vault.resolve(&rel)?;
+        // 符号链接：直接改名（硬链接在有的系统上会跟随链接，变成移动目标文件）
+        if meta.file_type().is_symlink() {
+            if dst.symlink_metadata().is_ok() {
+                continue;
+            }
+            fs::rename(&src, &dst)?;
+            return Ok(rel);
+        }
         // 硬链接 + 删除原文件：目标已存在时原子失败，不会覆盖
         match fs::hard_link(&src, &dst) {
             Ok(()) => {
@@ -369,5 +389,34 @@ mod tests {
         assert_eq!(create_note(&v, Some("x"), "v1.2 计划", "").unwrap(), "x/v1.2 计划.md");
         assert!(create_note(&v, Some("../out"), "a", "").is_err());
         assert!(create_note(&v, None, "a/b", "").is_err());
+    }
+
+    #[test]
+    fn explicit_root_shelf_creates_in_root() {
+        let (_d, v) = vault();
+        assert_eq!(create_note(&v, Some(""), "根目录笔记", "正文").unwrap(), "根目录笔记.md");
+        assert_eq!(create_file(&v, Some(""), "根目录文档", "docx", b"PK").unwrap(), "根目录文档.docx");
+        assert_eq!(fs::read_to_string(v.root().join("根目录笔记.md")).unwrap(), "正文");
+    }
+
+    #[test]
+    fn name_extension_must_match_kind() {
+        let (_d, v) = vault();
+        assert_eq!(create_file(&v, Some(""), "报告.docx", "md", b"# x").unwrap(), "报告.docx.md");
+        assert_eq!(create_file(&v, Some(""), "周报.markdown", "md", b"").unwrap(), "周报.markdown");
+        assert_eq!(create_file(&v, Some(""), "表.docx", "docx", b"PK").unwrap(), "表.docx");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn moving_a_symlink_moves_the_link_not_the_target() {
+        let (d, v) = vault();
+        fs::create_dir_all(d.path().join("Real")).unwrap();
+        fs::write(d.path().join("Real/a.md"), "正文").unwrap();
+        std::os::unix::fs::symlink(d.path().join("Real/a.md"), d.path().join("alias.md")).unwrap();
+        let to = move_file(&v, "alias.md", ".trash").unwrap();
+        assert_eq!(to, ".trash/alias.md");
+        assert_eq!(fs::read_to_string(d.path().join("Real/a.md")).unwrap(), "正文");
+        assert!(fs::symlink_metadata(d.path().join(".trash/alias.md")).unwrap().file_type().is_symlink());
     }
 }

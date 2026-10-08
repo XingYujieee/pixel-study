@@ -5,6 +5,8 @@ members = [".", "crates/vault-core", "crates/ai-core"]
 name = "pixel-study"
 version = "0.1.0"
 description = "第一人称像素书房笔记软件"
+repository = "https://github.com/XingYujieee/pixel-study"
+homepage = "https://github.com/XingYujieee/pixel-study"
 edition = "2021"
 
 [lib]

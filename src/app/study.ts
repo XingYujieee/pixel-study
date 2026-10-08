@@ -13,7 +13,7 @@ import { DEFAULT_VOLUMES, type Volumes } from "../world/audio";
 import { ALL_STYLES, type BgmFrequency, type Style } from "../world/compose";
 import { applyPreset, makePreset, parsePresets, type Ambience, type LayoutPreset } from "../world/layout";
 import { emptyDocx, writeDocx } from "../word/docx";
-import { handleVaultEvents, onFileEvents, onPathOpened, onVaultLoaded, saveLayoutNow } from "./actions";
+import { handleVaultEvents, onBeforeVaultChange, onFileEvents, onPathOpened, onVaultLoaded, saveLayoutNow } from "./actions";
 import { useApp } from "./store";
 import { furniture, getEngine } from "./worldActions";
 import { useWorld } from "./worldStore";
@@ -69,11 +69,19 @@ const bump = () => set({ version: get().version + 1 });
 // ───────────── 保存附加数据 ─────────────
 
 let metaTimer: ReturnType<typeof setTimeout> | undefined;
+async function flushMeta() {
+  clearTimeout(metaTimer);
+  metaTimer = undefined;
+  const { opened, bookStatus, volumes, envAmbience, bgm, bgmStyles } = get();
+  await api.vaultJsonSave("meta.json", { opened, bookStatus, volumes, envAmbience, bgm, bgmStyles });
+}
+onBeforeVaultChange(async () => {
+  if (metaTimer) await flushMeta();
+});
 function saveMetaSoon() {
   clearTimeout(metaTimer);
   metaTimer = setTimeout(() => {
-    const { opened, bookStatus, volumes, envAmbience, bgm, bgmStyles } = get();
-    void api.vaultJsonSave("meta.json", { opened, bookStatus, volumes, envAmbience, bgm, bgmStyles }).catch(() => {});
+    void flushMeta().catch(() => {});
   }, 1500);
 }
 

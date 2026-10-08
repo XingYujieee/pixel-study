@@ -51,3 +51,16 @@ describe("高亮与提示框", () => {
     expect(calloutHtml("<p>x</p>")).toBe("<p>x</p>");
   });
 });
+
+describe("清理危险的 HTML", () => {
+  const ctx = { notePath: "a.md", resolveLink: () => ({ path: null, ambiguous: false }), assetUrl: (p: string) => p };
+  it("去掉 <style>、表单和盖住界面的 style，保留文字颜色", () => {
+    const h = render2('<style>body{display:none}</style><form action="https://x"><input name="k"></form><div style="position:fixed;inset:0">盖住</div><span style="color:#c0392b">红字</span><img src=x onerror="alert(1)">', ctx as never);
+    expect(h).not.toContain("<style");
+    expect(h).not.toContain("<form");
+    expect(h).not.toContain("<input");
+    expect(h).not.toContain("position");
+    expect(h).not.toContain("onerror");
+    expect(h).toContain('style="color:#c0392b"');
+  });
+});

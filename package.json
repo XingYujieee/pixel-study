@@ -2,6 +2,24 @@
   "name": "pixel-study",
   "private": true,
   "version": "0.1.0",
+  "description": "第一人称像素书房笔记软件 · A first-person pixel study for your local Markdown notes",
+  "homepage": "https://github.com/XingYujieee/pixel-study#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XingYujieee/pixel-study.git"
+  },
+  "bugs": {
+    "url": "https://github.com/XingYujieee/pixel-study/issues"
+  },
+  "keywords": [
+    "notes",
+    "markdown",
+    "obsidian",
+    "tauri",
+    "threejs",
+    "pixel-art",
+    "local-first"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

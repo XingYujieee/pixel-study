@@ -100,7 +100,7 @@ export class WordController {
   moveTo(parent: HTMLElement) {
     if (this.scroller.parentElement === parent) return;
     const top = this.scroller.scrollTop;
-    parent.appendChild(this.scroller);
+    parent.replaceChildren(this.scroller);
     this.scroller.scrollTop = top;
   }
 
@@ -290,49 +290,76 @@ export class WordController {
   }
 
   async handleEvents(events: VaultEvent[]) {
+    // 一个事件出错（文件刚好又被移走、草稿写不进去）不能让后面的事件都不处理
     for (const ev of events) {
-      if (ev.kind === "renamed") {
-        const d = this.docs.get(ev.from);
-        if (!d) continue;
-        this.docs.delete(ev.from);
-        d.path = ev.entry.path;
-        d.info = { ...d.info, path: d.path };
-        this.docs.set(d.path, d);
-        if (this.active === ev.from) this.active = d.path;
-        this.notify();
-      } else if (ev.kind === "removed") {
-        const d = this.docs.get(ev.path);
-        if (d && d.info.status !== "conflict") {
-          clearTimeout(d.timer);
-          this.setStatus(d, "missing");
-        }
-      } else {
-        const d = this.docs.get(ev.entry.path);
-        if (!d) continue;
-        const hash = ev.kind === "modified" ? ev.hash : null;
-        if (hash && hash === d.baseHash) continue;
-        if (d.saving) await d.saving;
-        if (path_is_active(this, d)) d.html = this.page.innerHTML;
-        if (d.html === d.savedHtml) await this.reload(d);
-        else if (hash) {
-          clearTimeout(d.timer);
-          this.setStatus(d, "conflict", { conflict: { diskHash: hash } });
-        }
+      try {
+        await this.handleEvent(ev);
+      } catch (e) {
+        console.warn("Word 文件事件处理失败", ev, e);
       }
     }
   }
 
-  private async reload(d: WordDoc) {
+  private async handleEvent(ev: VaultEvent) {
+    if (ev.kind === "renamed") {
+      const d = this.docs.get(ev.from);
+      if (!d) return;
+      this.docs.delete(ev.from);
+      d.path = ev.entry.path;
+      d.info = { ...d.info, path: d.path };
+      this.docs.set(d.path, d);
+      if (this.active === ev.from) this.active = d.path;
+      // 草稿跟着改名走（和 Markdown 编辑器一致），不在旧路径留下过期草稿
+      void this.api.draftClear(ev.from).catch(() => {});
+      if (this.active === d.path) d.html = this.page.innerHTML;
+      if (d.html !== d.savedHtml) await this.api.draftWrite(d.path, d.html, d.baseHash).catch(() => {});
+      this.notify();
+    } else if (ev.kind === "removed") {
+      const d = this.docs.get(ev.path);
+      if (d && d.info.status !== "conflict") {
+        clearTimeout(d.timer);
+        this.setStatus(d, "missing");
+        if (this.active === d.path) d.html = this.page.innerHTML;
+        if (d.html !== d.savedHtml) await this.api.draftWrite(d.path, d.html, d.baseHash);
+      }
+    } else {
+      const d = this.docs.get(ev.entry.path);
+      if (!d) return;
+      const hash = ev.kind === "modified" ? ev.hash : null;
+      if (hash && hash === d.baseHash && d.info.status !== "missing") return;
+      if (d.saving) await d.saving;
+      if (path_is_active(this, d)) d.html = this.page.innerHTML;
+      if (d.html === d.savedHtml) await this.reload(d);
+      else if (hash) {
+        clearTimeout(d.timer);
+        this.setStatus(d, "conflict", { conflict: { diskHash: hash } });
+        await this.api.draftWrite(d.path, d.html, d.baseHash);
+      } else {
+        await this.reload(d);
+      }
+    }
+  }
+
+  private async reload(d: WordDoc, discardLocal = false) {
     const { bytes, hash } = await this.api.read(d.path);
     const { html, lossy } = await readDocx(bytes);
+    // IO 与 DOCX 转换期间用户可能继续输入，必须在应用读取结果时再次检查。
+    if (this.active === d.path) d.html = this.page.innerHTML;
+    if (!discardLocal && d.html !== d.savedHtml) {
+      clearTimeout(d.timer);
+      this.setStatus(d, "conflict", { conflict: { diskHash: hash } });
+      await this.api.draftWrite(d.path, d.html, d.baseHash);
+      return;
+    }
     const clean = DOMPurify.sanitize(html, ALLOWED);
     d.html = d.savedHtml = clean;
     d.baseHash = hash;
     d.backedUp = false;
-    d.info = { ...d.info, lossy, readOnly: d.info.readOnly && lossy.length > 0 };
+    d.info = { ...d.info, lossy, readOnly: lossy.length > 0 };
     if (this.active === d.path) {
       const top = this.scroller.scrollTop;
       this.page.innerHTML = clean;
+      this.page.contentEditable = d.info.readOnly ? "false" : "true";
       this.scroller.scrollTop = top;
     }
     this.setStatus(d, "clean");
@@ -343,7 +370,7 @@ export class WordController {
     const d = this.docs.get(path);
     if (!d?.info.conflict) return;
     if (choice === "disk") {
-      await this.reload(d);
+      await this.reload(d, true);
       await this.api.draftClear(path).catch(() => {});
       return;
     }
@@ -380,7 +407,16 @@ export class WordController {
   async restoreDraft(draft: Draft) {
     try {
       await this.open(draft.path);
-    } catch {
+    } catch (e) {
+      if (!e || typeof e !== "object" || !("kind" in e) || e.kind !== "not_found") throw e;
+      const html = DOMPurify.sanitize(draft.content, ALLOWED);
+      const d: WordDoc = {
+        path: draft.path, html, savedHtml: "\u0000", baseHash: null,
+        info: { path: draft.path, status: "missing", lossy: [], readOnly: false },
+        backedUp: false, saving: null, saveAgain: false, scrollTop: 0,
+      };
+      this.docs.set(d.path, d);
+      this.activate(d);
       return;
     }
     const d = this.docs.get(draft.path)!;
@@ -414,6 +450,17 @@ export class WordController {
     this.page.focus();
     document.execCommand("formatBlock", false, `<${tag}>`);
     this.onInput();
+  }
+
+  reset() {
+    for (const d of this.docs.values()) {
+      clearTimeout(d.timer);
+      clearTimeout(d.draftTimer);
+    }
+    this.docs.clear();
+    this.active = null;
+    this.page.innerHTML = "";
+    this.notify();
   }
 }
 

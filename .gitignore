@@ -9,3 +9,5 @@ test-vault/
 .dl/
 像素书房.app/
 *.patch
+.playwright-cli/
+output/playwright/

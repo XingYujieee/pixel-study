@@ -402,4 +402,29 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].path, "Notes/灵感.md");
     }
+
+    #[test]
+    fn thousand_note_scan_and_search() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("中文目录")).unwrap();
+        for i in 0..1000 {
+            fs::write(dir.path().join(format!("中文目录/笔记{i:04}.md")),
+                format!("---\ntags: [测试]\n---\n# 笔记{i}\n{}\n唯一关键词{i:04}\n", "知识整理与写作。".repeat(200))).unwrap();
+        }
+        let mut session = VaultSession::new(Vault::open(dir.path()).unwrap());
+        let start = std::time::Instant::now();
+        let mut batches = vec![];
+        assert_eq!(session.rescan(200, |batch| batches.push(batch.len())).unwrap(), 1000);
+        let scan = start.elapsed();
+        assert_eq!(batches.iter().sum::<usize>(), 1000);
+        assert!(batches.iter().all(|n| *n <= 200));
+        let start = std::time::Instant::now();
+        let hits = session.search("唯一关键词0999", 60);
+        let cold = start.elapsed();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "中文目录/笔记0999.md");
+        let start = std::time::Instant::now();
+        assert_eq!(session.search("知识整理", 60).len(), 60);
+        println!("1000 notes: scan={scan:?}, cold_search={cold:?}, warm_search={:?}", start.elapsed());
+    }
 }

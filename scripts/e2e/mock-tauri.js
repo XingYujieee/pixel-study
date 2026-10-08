@@ -72,7 +72,8 @@
         case "search":
           return [];
         case "file_create": {
-          const p = `${args.dir || "Notes"}/${args.name}.${args.ext}`;
+          const dir = args.dir ?? "Notes";
+          const p = `${dir ? dir + "/" : ""}${args.name}.${args.ext}`;
           const bytes = args.data ? b64(args.data) : new Uint8Array();
           if (args.ext === "docx") binary[p] = bytes;
           files[p] = args.ext === "docx" ? "" : new TextDecoder().decode(bytes);

@@ -14,9 +14,28 @@ function lambert(key: string, tex: THREE.Texture, opts: THREE.MeshLambertMateria
   let m = matCache.get(k) as THREE.MeshLambertMaterial | undefined;
   if (!m) {
     m = new THREE.MeshLambertMaterial({ map: tex, ...opts });
+    m.userData.shared = true;
     matCache.set(k, m);
   }
   return m;
+}
+
+/**
+ * 拆掉家具模型时释放显存：几何体都是每件家具自己的，直接释放；
+ * 共用的材质（userData.shared）和纹理不动，只有书架名牌的文字纹理是单独画的。书由 ShelfBooks 自己释放。
+ */
+export function disposeObject(root: THREE.Object3D) {
+  root.traverse((o) => {
+    if (o.userData.books) return;
+    const m = o as THREE.Mesh;
+    if (!m.geometry) return;
+    m.geometry.dispose();
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+      if (!mat || mat.userData?.shared) continue;
+      if (o.name === "signtext") (mat as THREE.MeshBasicMaterial).map?.dispose();
+      mat.dispose();
+    }
+  });
 }
 
 /** 按面尺寸缩放 UV，使可平铺纹理保持每方块一张 */
@@ -765,8 +784,14 @@ export function buildGhost(type: FurnitureType, t: TextureSet = textures()): THR
   const ok = new THREE.MeshBasicMaterial({ color: 0x8ff07a, transparent: true, opacity: 0.38, depthWrite: false });
   const bad = new THREE.MeshBasicMaterial({ color: 0xff6a5a, transparent: true, opacity: 0.38, depthWrite: false });
   g.traverse((o) => {
-    if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = ok;
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    // 原来的材质用不到了：不是共用的就释放
+    for (const old of Array.isArray(m.material) ? m.material : [m.material]) if (old && !old.userData?.shared) old.dispose();
+    m.material = ok;
   });
+  ok.userData.shared = bad.userData.shared = true;
+  g.userData.ghostMats = [ok, bad];
   g.userData.setValid = (valid: boolean) =>
     g.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = valid ? ok : bad;
@@ -779,7 +804,9 @@ export function buildGhost(type: FurnitureType, t: TextureSet = textures()): THR
 /** 选中描边：黑色线框 */
 export function outlineFor(min: THREE.Vector3, max: THREE.Vector3): THREE.LineSegments {
   const size = new THREE.Vector3().subVectors(max, min).addScalar(0.02);
-  const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(size.x, size.y, size.z));
+  const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+  const geo = new THREE.EdgesGeometry(boxGeo);
+  boxGeo.dispose();
   const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.75 }));
   line.position.copy(min).add(max).multiplyScalar(0.5);
   return line;

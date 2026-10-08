@@ -5,6 +5,7 @@ import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { cellEnd, parseTable, toggleTodo } from "./mdFormat";
+import { isLiteralMarkdown } from "./mdContext";
 
 const KEY = "ps.livePreview";
 
@@ -76,6 +77,24 @@ class BulletWidget extends WidgetType {
   }
 }
 
+const CALLOUT_LABELS: Record<string, string> = { note: "📝 笔记", tip: "💡 提示", info: "ℹ️ 信息", warning: "⚠️ 注意", danger: "⛔ 危险", success: "✅ 完成", question: "❓ 问题", quote: "❝ 引述", todo: "☑️ 待办", abstract: "📋 摘要", example: "🔎 例子" };
+
+/** Obsidian 提示块的标头：[!tip] → 💡 提示 */
+class CalloutWidget extends WidgetType {
+  constructor(readonly type: string) {
+    super();
+  }
+  eq(o: CalloutWidget) {
+    return o.type === this.type;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = `md-callout-tag t-${this.type}`;
+    el.textContent = CALLOUT_LABELS[this.type] ?? `📌 ${this.type}`;
+    return el;
+  }
+}
+
 class RuleWidget extends WidgetType {
   toDOM() {
     const el = document.createElement("span");
@@ -118,7 +137,7 @@ function build(view: EditorView): DecorationSet {
       to,
       enter: (node) => {
         const name = node.name;
-        if (name === "FencedCode" || name === "CodeBlock" || name === "FrontMatter") return false;
+        if (name === "FencedCode" || name === "CodeBlock" || name === "Frontmatter") return false;
         const ln = lineOf(node.from);
         const off = !active.has(ln.number);
         switch (name) {
@@ -136,10 +155,15 @@ function build(view: EditorView): DecorationSet {
           case "CodeMark":
             if (off && node.node.parent?.name === "InlineCode") out.push(hide.range(node.from, node.to));
             break;
-          case "QuoteMark":
+          case "QuoteMark": {
             out.push(lineQuote.range(ln.from));
-            if (off) out.push(hide.range(node.from, Math.min(ln.to, node.to + (state.sliceDoc(node.to, node.to + 1) === " " ? 1 : 0))));
+            const after = Math.min(ln.to, node.to + (state.sliceDoc(node.to, node.to + 1) === " " ? 1 : 0));
+            if (off) out.push(hide.range(node.from, after));
+            // 提示块标头：> [!tip] 标题
+            const m = /^\[!([A-Za-z]+)\][-+]?/.exec(state.sliceDoc(after, ln.to));
+            if (off && m) out.push(Decoration.replace({ widget: new CalloutWidget(m[1].toLowerCase()) }).range(after, after + m[0].length));
             break;
+          }
           case "TaskMarker": {
             const checked = /x/i.test(state.sliceDoc(node.from, node.to));
             if (checked) out.push(lineTodoDone.range(ln.from));
@@ -169,7 +193,7 @@ function build(view: EditorView): DecorationSet {
             if (!off) break;
             const marks = node.node.getChildren("LinkMark");
             const url = node.node.getChild("URL");
-            if (marks.length >= 2 && state.sliceDoc(node.from, node.from + 1) === "[") {
+            if (marks.length >= 2 && state.sliceDoc(node.from, node.from + 1) === "[" && state.sliceDoc(node.from, node.from + 2) !== "[!") {
               out.push(hide.range(marks[0].from, marks[0].to));
               out.push(Decoration.mark({ class: "md-link" }).range(marks[0].to, marks[1].from));
               out.push(hide.range(marks[1].from, node.to));
@@ -190,6 +214,7 @@ function build(view: EditorView): DecorationSet {
         let m: RegExpExecArray | null;
         while ((m = rule.re.exec(line.text))) {
           const s = line.from + m.index;
+          if (isLiteralMarkdown(state, s)) continue;
           const e = s + m[0].length;
           const o = rule.open(m);
           const style = rule.style?.(m);
@@ -205,6 +230,7 @@ function build(view: EditorView): DecorationSet {
       let w: RegExpExecArray | null;
       while ((w = wl.exec(line.text))) {
         const s = line.from + w.index;
+        if (isLiteralMarkdown(state, s)) continue;
         out.push(Decoration.mark({ class: "md-wikilink" }).range(s + 2, s + w[0].length - 2));
         if (off) {
           out.push(hide.range(s, s + 2));

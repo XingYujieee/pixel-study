@@ -1,4 +1,4 @@
-import DOMPurify from "dompurify";
+import { safeHtml } from "../../lib/sanitize";
 import { marked } from "marked";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { conversationMarkdown, useAi, type UiMessage } from "../../app/aiStore";
@@ -157,7 +157,7 @@ function Chat({ onSetup }: { onSetup: () => void }) {
 }
 
 function MessageView({ m }: { m: UiMessage }) {
-  const html = useMemo(() => (m.role === "assistant" ? DOMPurify.sanitize(marked.parse(m.content || "", { async: false }) as string) : ""), [m.content, m.role]);
+  const html = useMemo(() => (m.role === "assistant" ? safeHtml(marked.parse(m.content || "", { async: false }) as string) : ""), [m.content, m.role]);
   const selected = useApp((s) => s.selected);
   return (
     <div className={`ai-msg ${m.role}`}>

@@ -14,7 +14,7 @@ import {
   type Layout,
   type Rot,
 } from "./layout";
-import { buildFurniture, buildGhost, buildRoom, buildWallItem, outlineFor, placeGroup, setSand, type RoomBuild } from "./models";
+import { buildFurniture, disposeObject, buildGhost, buildRoom, buildWallItem, outlineFor, placeGroup, setSand, type RoomBuild } from "./models";
 import { THEMES, type RoomTheme, type Side } from "./themes";
 import { canPlaceWall, snapWall, wallTransform, type WallItem, type WallItemType, type WallSide } from "./wall";
 import { PetSystem } from "./pets";
@@ -110,7 +110,10 @@ function noteTexture(i: number): THREE.CanvasTexture {
 
 let signWoodMat: THREE.MeshLambertMaterial | null = null;
 function signWood() {
-  signWoodMat ??= new THREE.MeshLambertMaterial({ map: textures().shelfWoodLight });
+  if (!signWoodMat) {
+    signWoodMat = new THREE.MeshLambertMaterial({ map: textures().shelfWoodLight });
+    signWoodMat.userData.shared = true;
+  }
   return signWoodMat;
 }
 
@@ -282,7 +285,10 @@ export class WorldEngine {
   rebuildFurniture() {
     if (!this.layout) return;
     this.hideDropGlow();
-    for (const g of this.groups.values()) this.furnitureRoot.remove(g);
+    for (const g of this.groups.values()) {
+      this.furnitureRoot.remove(g);
+      disposeObject(g);
+    }
     for (const b of this.shelfBooks.values()) b.dispose();
     for (const l of this.lights) this.scene.remove(l);
     this.groups.clear();
@@ -1773,6 +1779,7 @@ export class WorldEngine {
     if (this.outline) {
       this.outline.parent?.remove(this.outline);
       this.outline.geometry.dispose();
+      (this.outline.material as THREE.Material).dispose();
     }
     this.outline = null;
     this.outlineKey = "";
@@ -1792,7 +1799,11 @@ export class WorldEngine {
   }
 
   private hideGhost() {
-    if (this.ghost) this.scene.remove(this.ghost);
+    if (this.ghost) {
+      this.scene.remove(this.ghost);
+      disposeObject(this.ghost);
+      for (const m of (this.ghost.userData.ghostMats as THREE.Material[] | undefined) ?? []) m.dispose();
+    }
     this.ghost = null;
     this.ghostType = null;
   }

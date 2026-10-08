@@ -11,6 +11,7 @@ export interface Toast {
 
 interface AppStore {
   vault: VaultInfo | null;
+  switchingVault: boolean;
   files: Map<string, FileEntry>;
   /** 每次文件列表变化 +1，供 useMemo 依赖 */
   filesVersion: number;
@@ -47,6 +48,7 @@ let toastId = 0;
 
 export const useApp = create<AppStore>((set, get) => ({
   vault: null,
+  switchingVault: false,
   files: new Map(),
   filesVersion: 0,
   scanning: false,
