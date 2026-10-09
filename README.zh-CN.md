@@ -22,11 +22,10 @@
 
 </div>
 
-<p align="center">
-  <a href="docs/assets/intro.mp4"><img src="docs/assets/intro-teaser.gif" width="100%" alt="像素书房宣传片预览" /></a>
-  <br />
-  <sub>▶ <a href="docs/assets/intro.mp4"><b>观看 45 秒完整宣传片（有声）</b></a> · 画面全部来自应用实机，配乐由代码现场合成</sub>
-</p>
+
+https://github.com/user-attachments/assets/c5d39b2a-555c-40a8-bb31-19a3b83d6e18
+
+
 
 > 走近书架，抽出一本笔记；坐到书桌前，继续写下去。空间负责让整理变得有趣，正文始终是你熟悉的本地文件。
 
