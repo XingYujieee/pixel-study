@@ -17,6 +17,7 @@ First-person pixel world · local-file writing · shares a vault with Obsidian
 ![React](https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-stable-B7410E?style=flat-square&logo=rust&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-A31F34?style=flat-square)
 ![Local first](https://img.shields.io/badge/local--first-your%20files%20stay%20yours-6B805D?style=flat-square)
 
 </div>
@@ -246,7 +247,7 @@ Issues and pull requests are welcome. Before you submit, please check that:
 
 ## License and credits
 
-No license has been chosen yet. Until a `LICENSE` file is added, all rights are reserved.
+Released under the [MIT License](LICENSE). The bundled pixel font keeps its own SIL Open Font License 1.1.
 
 Built with these open-source projects:
 

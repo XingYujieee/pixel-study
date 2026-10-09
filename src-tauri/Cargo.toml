@@ -7,6 +7,7 @@ version = "0.1.0"
 description = "第一人称像素书房笔记软件"
 repository = "https://github.com/XingYujieee/pixel-study"
 homepage = "https://github.com/XingYujieee/pixel-study"
+license = "MIT"
 edition = "2021"
 
 [lib]

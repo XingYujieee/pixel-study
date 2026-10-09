@@ -44,4 +44,4 @@ macOS 原生窗口、输入法候选窗和 Finder 拖放仍需在真机上人工
 - README 改为中英双语（`README.md` / `README.zh-CN.md`），补充截图、架构、项目结构和验证状态。
 - 测试报告集中到 `docs/reports/`。
 - `package.json` 和 `Cargo.toml` 补充描述、仓库地址等元数据。
-- **仍缺项目许可证（LICENSE）**：没有许可证时，代码默认保留所有权利，别人不能合法复用。需要作者决定后补上。
+- 项目以 MIT 许可证开源（`LICENSE`）。

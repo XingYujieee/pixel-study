@@ -17,6 +17,7 @@
 ![React](https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-stable-B7410E?style=flat-square&logo=rust&logoColor=white)
+![许可证: MIT](https://img.shields.io/badge/许可证-MIT-A31F34?style=flat-square)
 ![本地优先](https://img.shields.io/badge/本地优先-文件属于你-6B805D?style=flat-square)
 
 </div>
@@ -243,7 +244,7 @@ pnpm gen:vault test-vault 1000   # 生成 1000 篇笔记的测试库
 
 ## 许可与致谢
 
-项目许可证尚未确定，在仓库加入 `LICENSE` 之前保留所有权利。
+本项目以 [MIT 许可证](LICENSE) 开源。随附的像素字体仍遵循其自身的 SIL OFL 1.1 许可。
 
 感谢这些开源项目：
 

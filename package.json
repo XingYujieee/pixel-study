@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "第一人称像素书房笔记软件 · A first-person pixel study for your local Markdown notes",
+  "license": "MIT",
   "homepage": "https://github.com/XingYujieee/pixel-study#readme",
   "repository": {
     "type": "git",
