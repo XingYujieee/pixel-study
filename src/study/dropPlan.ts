@@ -38,7 +38,8 @@ export function planDrop(f: Furniture | null, opts: { focus?: boolean; chestId?:
     case "aibench":
       return { dir: IMPORT_DIR, label: "交给 AI 工作台 → 导入后附进对话", fid: f.id, then: "ai" };
     case "jukebox":
-      return { dir: "", label: "放到留声机上 → 加进歌单（复制到应用里，不进笔记库）", fid: f.id, audio: true };
+    case "recordshelf":
+      return { dir: "", label: "放上唱片架 → 按专辑做成唱片（复制到应用里，不进笔记库）", fid: f.id, audio: true };
     case "chest":
       return { dir: IMPORT_DIR, label: `放进资料箱 → ${IMPORT_DIR}/，稍后分拣`, fid: f.id };
     default:

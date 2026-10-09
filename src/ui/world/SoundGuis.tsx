@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { importAudioFromDialog, loadTracks, next, play, removeTrack, renameTrack, setMode, toggle, useJukebox, type PlayMode } from "../../app/jukebox";
+import { loadTracks, next, play, removeTrack, setMode, toggle, useJukebox, type PlayMode } from "../../app/jukebox";
+import { coverOf, ejectDeck, recordById } from "../../app/records";
+import { trackTitle } from "../../world/records";
+import { api, type Track } from "../../ipc";
 import { setBgm, setEnvAmbience, setVolumes, toggleBgmStyle, useStudy } from "../../app/study";
 import { playBgmNow, stopBgm, useBgm } from "../../app/sound";
 import { ALL_STYLES, STYLE_NAMES, type BgmFrequency } from "../../world/compose";
@@ -87,14 +90,17 @@ const MODES: [PlayMode, string][] = [
   ["shuffle", "随机"],
 ];
 
-/** 留声机：歌单与播放 */
+/** 留声机：放着的那张唱片、歌单与播放 */
 export function JukeboxGui() {
-  const { tracks, current, playing, mode } = useJukebox();
+  const { tracks, current, playing, mode, queue } = useJukebox();
+  const deck = useWorld((s) => s.deck);
   const music = useStudy((s) => s.volumes.music);
   const close = () => useWorld.getState().closeGui();
   useEffect(() => {
     void loadTracks();
   }, []);
+  const rec = recordById(deck);
+  const list = (queue ?? []).map((id) => tracks.find((t) => t.id === id)).filter((t): t is Track => !!t);
   const cur = tracks.find((t) => t.id === current);
   return (
     <div className="mc-overlay" onMouseDown={close}>
@@ -102,20 +108,43 @@ export function JukeboxGui() {
         <div className="panel-head">
           <h2 className="mc-title">留声机</h2>
           <span className="spacer" />
-          <button className="mc-btn" onClick={() => void importAudioFromDialog()} title="复制到应用里，原文件不变">
-            加歌…
+          {rec && (
+            <button
+              className="mc-btn"
+              onClick={() => {
+                void ejectDeck(false);
+              }}
+              title="唱片放回唱片架（在书房里对着留声机按住 E，可以直接拿在手上）"
+            >
+              取下唱片
+            </button>
+          )}
+          <button className="mc-btn" onClick={() => useWorld.getState().openGui({ kind: "records" })}>
+            唱片架…
           </button>
         </div>
+        {rec ? (
+          <div className="jb-record">
+            <img className="record-cover big" src={coverOf(rec).toDataURL()} alt="" draggable={false} />
+            <div className="record-meta">
+              <span className="mc-title">{rec.title}</span>
+              <span className="mc-text small dim">
+                {rec.artist || "未知歌手"} · {rec.tracks.length} 首
+              </span>
+              <span className="mc-text">{cur ? `${playing ? "♪ 正在放" : "暂停"}：${trackTitle(cur)}` : "唱针还没落下"}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="mc-text panel-note">唱盘空着。去唱片架对准一张唱片按 E 拿起来，走回这里再按 E 放上去。</p>
+        )}
         <div className="jb-now">
-          <span className="mc-text">{cur ? `${playing ? "♪ 正在放" : "暂停"}：${cur.name}` : "还没放歌"}</span>
-          <span className="spacer" />
-          <button className="mc-btn small" onClick={() => void next(-1)} disabled={!tracks.length} title="上一首">
+          <button className="mc-btn small" onClick={() => void next(-1)} disabled={!list.length} title="上一首">
             ⏮
           </button>
-          <button className="mc-btn small on" onClick={toggle} disabled={!tracks.length}>
+          <button className="mc-btn small on" onClick={toggle} disabled={!list.length}>
             {playing ? "暂停" : "播放"}
           </button>
-          <button className="mc-btn small" onClick={() => void next(1)} disabled={!tracks.length} title="下一首">
+          <button className="mc-btn small" onClick={() => void next(1)} disabled={!list.length} title="下一首">
             ⏭
           </button>
           <span className="seg">
@@ -126,16 +155,13 @@ export function JukeboxGui() {
             ))}
           </span>
         </div>
-        <div className="picker-list tall">
-          {tracks.map((t) => (
-            <TrackRow key={t.id} id={t.id} name={t.name} on={t.id === current} playing={t.id === current && playing} />
-          ))}
-          {tracks.length === 0 && (
-            <p className="mc-text small panel-note">
-              歌单是空的。点「加歌」，或者直接把 mp3、m4a、wav、flac 文件从访达拖到留声机上。音频会复制到应用自己的文件夹，不会放进笔记库。
-            </p>
-          )}
-        </div>
+        {list.length > 0 && (
+          <div className="picker-list tall">
+            {list.map((t, i) => (
+              <TrackRow key={t.id} id={t.id} no={i + 1} name={trackTitle(t)} on={t.id === current} playing={t.id === current && playing} />
+            ))}
+          </div>
+        )}
         <div className="panel-foot">
           <label className="field-row wide jb-vol">
             <span className="mc-text">音量</span>
@@ -152,28 +178,28 @@ export function JukeboxGui() {
   );
 }
 
-function TrackRow({ id, name, on, playing }: { id: string; name: string; on: boolean; playing: boolean }) {
+function TrackRow({ id, no, name, on, playing }: { id: string; no: number; name: string; on: boolean; playing: boolean }) {
   const [editing, setEditing] = useState(false);
   const [n, setN] = useState(name);
   const keys = useImeSafeKeys({
     onEnter: () => {
-      void renameTrack(id, n);
+      void api.audioUpdate([id], { title: n }).then(() => loadTracks());
       setEditing(false);
     },
     onEscape: () => setEditing(false),
   });
   return (
     <div className={`picker-row static ${on ? "on" : ""}`}>
-      <span className="jb-icon">{playing ? "♪" : "·"}</span>
+      <span className="jb-icon">{playing ? "♪" : no}</span>
       {editing ? (
         <input className="mc-input pet-name" autoFocus value={n} onChange={(e) => setN(e.target.value)} {...keys} onBlur={() => setEditing(false)} />
       ) : (
-        <button className="jb-name" onClick={() => void play(id)} onDoubleClick={() => setEditing(true)} title="单击播放，双击改名">
+        <button className="jb-name" onClick={() => void play(id)} onDoubleClick={() => setEditing(true)} title="单击播放，双击改歌名">
           {name}
         </button>
       )}
-      <button className="mc-btn small" onClick={() => void removeTrack(id)} title="移出歌单（删除应用里的副本，原文件不受影响）">
-        移出
+      <button className="mc-btn small" onClick={() => void removeTrack(id)} title="删除这首（删除应用里的副本，原文件不受影响）">
+        删除
       </button>
     </div>
   );

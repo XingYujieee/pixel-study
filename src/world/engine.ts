@@ -14,7 +14,9 @@ import {
   type Layout,
   type Rot,
 } from "./layout";
-import { buildFurniture, disposeObject, buildGhost, buildRoom, buildWallItem, outlineFor, placeGroup, setSand, type RoomBuild } from "./models";
+import { buildFurniture, disposeObject, buildGhost, buildRoom, buildWallItem, outlineFor, placeGroup, recordSlot, RECORD_SLOT, setSand, type RoomBuild } from "./models";
+import { coverTexture, recordSleeve, type GardenTool } from "./held";
+import { canPlant, type PlantKind } from "./gardenEdit";
 import { THEMES, type RoomTheme, type Side } from "./themes";
 import { canPlaceWall, snapWall, wallTransform, type WallItem, type WallItemType, type WallSide } from "./wall";
 import { PetSystem } from "./pets";
@@ -34,6 +36,8 @@ export type Target =
   | { kind: "door"; open: boolean }
   | { kind: "bird" }
   | { kind: "garden"; x: number; z: number; item: GardenKind }
+  | { kind: "record"; id: string; fid: string }
+  | { kind: "gardenspot"; x: number; z: number; tool: PlantKind; valid: boolean; reason?: string }
   | { kind: "wall"; id: string }
   | { kind: "pet"; id: string }
   | { kind: "wallspot"; side: WallSide; a: number; y: number; valid: boolean; reason?: string }
@@ -44,7 +48,9 @@ export interface EngineCallbacks {
   /** 准星目标变化 */
   onTarget(t: Target): void;
   /** 左键：与目标交互 */
-  onInteract(t: Exclude<Target, null | { kind: "floor" } | { kind: "wallspot" }>): void;
+  onInteract(t: Exclude<Target, null | { kind: "floor" } | { kind: "wallspot" } | { kind: "gardenspot" }>): void;
+  /** 右键：在院子里种 / 放东西（已通过检查） */
+  onGardenPlace?(tool: PlantKind, x: number, z: number): void;
   /** 右键：在地面放置（已通过检查） */
   onPlace(f: Omit<Furniture, "id">): void;
   /** 左键：把黑板 / 画框挂到墙上（已通过检查） */
@@ -312,6 +318,8 @@ export class WorldEngine {
       }
     }
     this.rebuildGround();
+    this.applySleeves();
+    this.applyDeck();
     this.furnitureRoot.traverse((o) => {
       if (o.name === "hourglass") setSand(o, this.hourglassProgress);
     });
@@ -450,6 +458,123 @@ export class WorldEngine {
   setGarden(items: GardenBlock[] | undefined) {
     this.gardenItems = items;
     this.rebuildYard();
+  }
+
+  // ───────────── 唱片 ─────────────
+
+  private sleeves: { id: string; fid: string; slot: number; cover: HTMLCanvasElement }[] = [];
+  private deckCover: HTMLCanvasElement | null = null;
+
+  /** 唱片架上的唱片：每张一个封套，按格子摆好；拿在手上或放在留声机上的不在列表里 */
+  setRecordSleeves(list: { id: string; fid: string; slot: number; cover: HTMLCanvasElement }[]) {
+    this.sleeves = list;
+    this.applySleeves();
+    this.invalidate();
+  }
+
+  private applySleeves() {
+    if (this.outlineKey.startsWith("rec:")) this.clearOutline();
+    for (const g of this.groups.values()) {
+      const holder = g.getObjectByName("sleeves");
+      if (!holder) continue;
+      for (const c of [...holder.children]) {
+        holder.remove(c);
+        disposeObject(c);
+      }
+    }
+    for (const s of this.sleeves) {
+      const holder = this.groups.get(s.fid)?.getObjectByName("sleeves");
+      if (!holder) continue;
+      const m = recordSleeve(s.cover);
+      const p = recordSlot(s.slot);
+      m.position.set(p.x, p.y, p.z);
+      m.rotation.x = p.rx;
+      m.traverse((o) => {
+        o.userData.record = s.id;
+        o.userData.fid = s.fid;
+      });
+      holder.add(m);
+    }
+  }
+
+  /** 留声机上的唱片：null 时唱盘上空着 */
+  setDeck(cover: HTMLCanvasElement | null) {
+    this.deckCover = cover;
+    this.applyDeck();
+    this.invalidate();
+  }
+
+  private applyDeck() {
+    this.furnitureRoot.traverse((o) => {
+      if (o.name === "disc") o.visible = !!this.deckCover;
+      if (o.name === "disclabel") {
+        const m = (o as THREE.Mesh).material as THREE.MeshLambertMaterial;
+        m.map = this.deckCover ? coverTexture(this.deckCover) : null;
+        m.color.set(this.deckCover ? 0xffffff : 0xc8423a);
+        m.needsUpdate = true;
+      }
+    });
+  }
+
+  /** 手上拿着的东西（唱片、工具）；null 时回到物品栏里选中的家具 */
+  setHeld(key: string | null, build: (() => THREE.Object3D) | null) {
+    this.carrying = !!key;
+    if (key) this.hand.setHeld(key, build);
+    else this.hand.setItem(this.selected);
+    this.needsRender = true;
+  }
+
+  private carrying = false;
+
+  setInspect(on: boolean) {
+    this.hand.setInspect(on);
+    this.needsRender = true;
+  }
+
+  get isInspecting() {
+    return this.hand.inspecting;
+  }
+
+  // ───────────── 园艺工具 ─────────────
+
+  private gardenTool: GardenTool | null = null;
+  private gardenGhost: THREE.Group | null = null;
+
+  /** 院子里物品栏选中的工具（屋里为 null） */
+  setGardenTool(tool: GardenTool | null) {
+    this.gardenTool = tool;
+    if (!tool || tool === "shovel") this.hideGardenGhost();
+    this.needsRender = true;
+  }
+
+  private showGardenGhost(tool: PlantKind, x: number, z: number, valid: boolean) {
+    const h = tool === "tree" ? 2.2 : tool === "hay" || tool === "bush" ? 1 : tool === "bed" ? 0.5 : tool === "flower" ? 0.6 : 0.12;
+    if (!this.gardenGhost || this.gardenGhost.userData.h !== h) {
+      this.hideGardenGhost();
+      const g = new THREE.Group();
+      const fill = new THREE.Mesh(new THREE.BoxGeometry(1, h, 1), new THREE.MeshBasicMaterial({ color: 0x8ff07a, transparent: true, opacity: 0.3, depthWrite: false }));
+      fill.position.y = h / 2;
+      const geo = new THREE.BoxGeometry(1.02, h + 0.02, 1.02);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x1a3a12 }));
+      geo.dispose();
+      edges.position.y = h / 2;
+      g.add(fill, edges);
+      g.userData.h = h;
+      g.traverse((o) => (o.userData.ghost = true));
+      this.gardenGhost = g;
+      this.scene.add(g);
+    }
+    const items = this.gardenItems ?? (this.defaultItems ??= defaultGarden());
+    const base = tool === "hay" ? (items.find((b) => b.x === x && b.z === z && b.kind === "hay")?.h ?? 0) : 0;
+    this.gardenGhost.position.set(x + 0.5, base, z + 0.5);
+    ((this.gardenGhost.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(valid ? 0x8ff07a : 0xff6a5a);
+  }
+
+  private hideGardenGhost() {
+    if (!this.gardenGhost) return;
+    this.scene.remove(this.gardenGhost);
+    disposeObject(this.gardenGhost);
+    this.gardenGhost = null;
   }
 
   /** 准星指着的院子格子（看着地面或花园里的东西） */
@@ -1200,6 +1325,7 @@ export class WorldEngine {
       this.releaseLock();
       this.setTarget(null);
       this.hideGhost();
+      this.hideGardenGhost();
     }
     this.invalidate();
   }
@@ -1271,7 +1397,7 @@ export class WorldEngine {
 
   setSelected(type: FurnitureType | null) {
     this.selected = type;
-    this.hand.setItem(type);
+    if (!this.carrying) this.hand.setItem(type);
     if (!type) this.hideGhost();
     this.needsRender = true;
   }
@@ -1448,13 +1574,19 @@ export class WorldEngine {
       this.toggleDoor();
       return;
     }
-    if (t && t.kind !== "floor" && t.kind !== "wallspot") this.cb.onInteract(t);
+    if (t && t.kind !== "floor" && t.kind !== "wallspot" && t.kind !== "gardenspot") this.cb.onInteract(t);
   }
 
   private secondary() {
     this.hand.use();
     if (this.wallPlacing) {
       this.cancelWallPlacing();
+      return;
+    }
+    const t = this.target;
+    if (t?.kind === "gardenspot") {
+      if (!t.valid) this.cb.onPlaceRejected(t.reason ?? "这里种不了");
+      else this.cb.onGardenPlace?.(t.tool, t.x, t.z);
       return;
     }
     if (!this.selected || !this.ghostSpot) return;
@@ -1709,6 +1841,16 @@ export class WorldEngine {
         this.showOutline(`w:${obj.userData.window}`, this.windowTargets as unknown as THREE.Group, obj.userData.min, obj.userData.max);
         break;
       }
+      if (obj.userData.record) {
+        const fid = obj.userData.fid as string;
+        next = { kind: "record", id: obj.userData.record as string, fid };
+        const sl = obj.parent;
+        if (sl) {
+          const { w, h: hh, d } = RECORD_SLOT;
+          this.showOutline(`rec:${obj.userData.record}`, sl as THREE.Group, new THREE.Vector3(-w / 2, -hh / 2, -d / 2), new THREE.Vector3(w / 2, hh / 2, d / 2));
+        }
+        break;
+      }
       const sb = obj.userData.books as ShelfBooks | undefined;
       if (sb && h.instanceId !== undefined) {
         const slot = sb.slots[h.instanceId];
@@ -1737,6 +1879,21 @@ export class WorldEngine {
       const t = -this.raycaster.ray.origin.y / this.raycaster.ray.direction.y;
       if (t > 0 && t < REACH) hitFloor = this.raycaster.ray.origin.clone().addScaledVector(this.raycaster.ray.direction, t);
     }
+    if (this.gardenTool && this.gardenTool !== "shovel" && this.isOutside && (!next || next.kind === "garden")) {
+      const cell = this.lookCell(7);
+      if (cell) {
+        const items = this.gardenItems ?? (this.defaultItems ??= defaultGarden());
+        const under = Math.floor(this.pos.x) === cell.x && Math.floor(this.pos.z) === cell.z && this.gardenTool !== "flower" && this.gardenTool !== "farmland";
+        const check = under ? ({ ok: false, reason: "你正站在这一格上" } as const) : canPlant(items, this.gardenTool, cell.x, cell.z);
+        this.clearOutline();
+        this.showGardenGhost(this.gardenTool, cell.x, cell.z, check.ok);
+        this.setTarget({ kind: "gardenspot", x: cell.x, z: cell.z, tool: this.gardenTool, valid: check.ok, reason: check.ok ? undefined : check.reason });
+        this.ghostSpot = null;
+        this.hideGhost();
+        return;
+      }
+    }
+    this.hideGardenGhost();
     if (!next) this.clearOutline();
     if (!next && hitFloor && this.selected) {
       const { w, d } = footprint({ type: this.selected, rot: this.ghostRot });

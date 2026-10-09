@@ -1881,3 +1881,161 @@
   border: 1px solid #5a3c1a;
   image-rendering: pixelated;
 }
+
+/* ───────── 唱片架、细看、按住 ───────── */
+
+.hotbar.garden {
+  box-shadow: inset 2px 2px 0 #8fbf6a, inset -2px -2px 0 #2b4a1b;
+  background: rgba(30, 44, 22, 0.78);
+}
+
+.hold-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: conic-gradient(#ffe08a var(--p), rgba(0, 0, 0, 0.35) 0);
+  -webkit-mask: radial-gradient(circle, transparent 15px, #000 16px);
+  mask: radial-gradient(circle, transparent 15px, #000 16px);
+  pointer-events: none;
+}
+.hold-ring span {
+  position: absolute;
+  left: 50%;
+  top: 54px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-shadow: 1px 1px 0 #3f3f3f;
+}
+
+.records-panel {
+  width: min(760px, 94vw);
+}
+.record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 8px;
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+  padding: 2px;
+}
+.record-card {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  grid-template-rows: auto auto;
+  gap: 4px 10px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.35), inset -2px -2px 0 rgba(255, 255, 255, 0.12);
+}
+.record-card.on {
+  background: rgba(255, 224, 138, 0.18);
+}
+.record-cover {
+  grid-row: span 2;
+  width: 72px;
+  height: 72px;
+  image-rendering: pixelated;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+}
+.record-cover.big {
+  width: 112px;
+  height: 112px;
+}
+.record-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.record-meta .field-row input {
+  flex: 1;
+  min-width: 0;
+}
+.record-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-self: end;
+}
+.mc-text.dim,
+.dim {
+  opacity: 0.7;
+}
+.panel-note.warn {
+  color: #ffd27a;
+}
+.jb-record {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 6px 0 8px;
+}
+kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 4px;
+  font: inherit;
+  text-align: center;
+  color: #fff;
+  background: #3a3a3a;
+  border: 1px solid #000;
+  box-shadow: inset -1px -2px 0 #1a1a1a, inset 1px 1px 0 #6a6a6a;
+}
+
+.inspect-card {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 14px;
+  width: min(460px, 46vw);
+  padding: 14px;
+  pointer-events: none;
+}
+.inspect-cover {
+  width: 128px;
+  height: 128px;
+  flex: none;
+  image-rendering: pixelated;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+}
+.inspect-body {
+  min-width: 0;
+}
+.inspect-tracks {
+  margin: 8px 0;
+  padding-left: 1.6em;
+  max-height: 200px;
+  overflow: hidden;
+}
+.inspect-tracks li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.key-hints {
+  opacity: 0.85;
+}
+@media (max-width: 720px) {
+  .inspect-card {
+    left: 16px;
+    right: 16px;
+    top: auto;
+    bottom: 130px;
+    transform: none;
+    width: auto;
+  }
+  .record-grid {
+    grid-template-columns: 1fr;
+  }
+}

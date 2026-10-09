@@ -50,6 +50,7 @@ pub fn run() {
             commands::audio_import,
             commands::audio_remove,
             commands::audio_rename,
+            commands::audio_update,
             commands::audio_path,
             commands::backlink_counts,
             commands::obsidian_templates_folder,

@@ -34,7 +34,11 @@ export function furniture(fid: string): Furniture | undefined {
 }
 
 /** 左键交互 */
-export function interact(t: Exclude<Target, null | { kind: "floor" } | { kind: "wallspot" }>) {
+export function interact(t: Exclude<Target, null | { kind: "floor" } | { kind: "wallspot" } | { kind: "gardenspot" }>) {
+  if (t.kind === "record") {
+    void import("./records").then((m) => m.pickRecord(t.id));
+    return;
+  }
   if (t.kind === "book") {
     void takeBook(t.path);
     return;
@@ -60,9 +64,7 @@ export function interact(t: Exclude<Target, null | { kind: "floor" } | { kind: "
     return;
   }
   if (t.kind === "garden") {
-    void import("./garden").then((m) => {
-      if (!m.pullWeed(t.x, t.z)) toast("想移走它或者种点什么，按 G 叫管家帮忙。");
-    });
+    void import("./gardenTools").then((m) => m.useGardenTarget(t.x, t.z));
     return;
   }
   const f = furniture(t.fid);
@@ -87,7 +89,11 @@ export function interact(t: Exclude<Target, null | { kind: "floor" } | { kind: "
       useWorld.getState().openGui({ kind: "pond" });
       break;
     case "jukebox":
-      useWorld.getState().openGui({ kind: "jukebox" });
+      void import("./records").then((m) => m.useJukeboxTarget());
+      break;
+    case "recordshelf":
+      if (useWorld.getState().carry) void import("./records").then((m) => m.putBack());
+      else useWorld.getState().openGui({ kind: "records" });
       break;
     case "carpet":
       useWorld.getState().openGui({ kind: "carpet", fid: f.id });

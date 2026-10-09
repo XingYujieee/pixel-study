@@ -31,6 +31,10 @@ describe("管家听得懂的说法", () => {
     expect(parseIntent("停掉音乐")).toEqual({ tool: "music", input: { action: "stop" } });
     expect(parseIntent("下雨吧")).toEqual({ tool: "scene", input: { weather: "rain" } });
     expect(parseIntent("你能做什么")?.tool).toBe("help");
+    expect(parseIntent("放《叶惠美》")).toEqual({ tool: "record", input: { action: "play", query: "叶惠美" } });
+    expect(parseIntent("放张唱片")).toEqual({ tool: "record", input: { action: "play" } });
+    expect(parseIntent("有哪些唱片")).toEqual({ tool: "record", input: { action: "list" } });
+    expect(parseIntent("停掉留声机")).toEqual({ tool: "record", input: { action: "stop" } });
     expect(parseIntent("今天心情不错")).toBeNull();
   });
 });

@@ -38,6 +38,11 @@ export interface Track {
   name: string;
   file: string;
   size: number;
+  title?: string;
+  artist?: string;
+  album?: string;
+  trackNo?: number;
+  cover?: number;
 }
 
 export type AiProvider = "anthropic" | "openai" | "compatible";
@@ -179,6 +184,7 @@ export const api = {
   audioImport: (sources: string[]) => invoke<{ added: Track[]; rejected: string[] }>("audio_import", { sources }),
   audioRemove: (id: string) => invoke<void>("audio_remove", { id }),
   audioRename: (id: string, name: string) => invoke<void>("audio_rename", { id, name }),
+  audioUpdate: (ids: string[], patch: { album?: string; artist?: string; title?: string; cover?: number }) => invoke<void>("audio_update", { ids, patch }),
   audioPath: (id: string) => invoke<string>("audio_path", { id }),
   backlinkCounts: () => invoke<Record<string, number>>("backlink_counts"),
   obsidianTemplatesFolder: () => invoke<string | null>("obsidian_templates_folder"),

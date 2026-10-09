@@ -457,11 +457,34 @@ async function musicTool(input: Record<string, unknown>): Promise<Result> {
   const m = await import("./sound");
   if (input.action === "stop") {
     m.stopBgm();
+    (await import("./jukebox")).pause();
     return { text: "音乐停了" };
   }
   const st = String(input.style ?? "");
   const ok = m.playBgmNow(st in STYLE_NAMES ? (st as Style) : undefined);
   return { text: ok ? `放上了：${m.useBgm.getState().title}` : "现在放不了（留声机在放歌，或者还没点过画面解锁声音）" };
+}
+
+/** 唱片：列出、放一张（按名字找，没说就随便挑）、停下 */
+async function recordTool(input: Record<string, unknown>): Promise<Result> {
+  const m = await import("./records");
+  const { trackTitle } = await import("../world/records");
+  const recs = m.allRecords();
+  if (input.action === "list") {
+    if (!recs.length) return { text: "唱片架是空的：对着唱片架按 E，点「导入音乐」。" };
+    return { text: recs.map((r) => `《${r.title}》${r.artist ? ` · ${r.artist}` : ""}（${r.tracks.length} 首）`).join("\n") };
+  }
+  if (input.action === "stop") {
+    m.pause();
+    return { text: "唱针抬起来了" };
+  }
+  if (!recs.length) return { text: "唱片架是空的，先导入几首音乐吧。" };
+  const q = String(input.query ?? "").trim().toLowerCase();
+  const pick = q ? recs.find((r) => `${r.title} ${r.artist} ${r.tracks.map(trackTitle).join(" ")}`.toLowerCase().includes(q)) : recs[Math.floor(Math.random() * recs.length)];
+  if (!pick) return { text: `唱片架上没找到「${input.query}」` };
+  m.pickRecord(pick.id);
+  await m.putOnDeck();
+  return { text: `放上了《${pick.title}》${pick.artist ? `（${pick.artist}）` : ""}` };
 }
 
 // 给大模型的工具说明
@@ -502,6 +525,7 @@ export const TOOLS: ToolSpec[] = [
     description: "改书房的时间、天气或屋子主题。hour 0–24；weather: clear/cloudy/rain/storm/snow；theme: study/minimal/cabin/tower/lighthouse/cellar/washitsu。",
     parameters: obj({ hour: { type: "number" }, weather: { type: "string" }, theme: { type: "string" } }),
   },
+  { name: "record", description: "唱片架和留声机：list 列出唱片；play 放一张（query 填专辑名、歌名或歌手，不填就随便挑）；stop 停下。用户说「放首歌」「放《X》」时优先用这个。", parameters: obj({ action: { type: "string", enum: ["list", "play", "stop"] }, query: str("专辑名、歌名或歌手") }, ["action"]) },
   { name: "music", description: "背景音乐：play 放一首（style: piano/musicbox/ambient/waltz/lofi/folk 可选），stop 停下。", parameters: obj({ action: { type: "string", enum: ["play", "stop"] }, style: { type: "string" } }, ["action"]) },
 ];
 
@@ -566,6 +590,8 @@ async function runTool(name: string, input: Record<string, unknown>, viaModel = 
       return sceneTool(input);
     case "music":
       return musicTool(input);
+    case "record":
+      return recordTool(input);
     default:
       return { text: `没有 ${name} 这个工具` };
   }

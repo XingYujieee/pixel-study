@@ -13,9 +13,27 @@ interface JukeboxStore {
   current: string | null;
   playing: boolean;
   mode: PlayMode;
+  /** 留声机上那张唱片的歌（按曲序）；null 表示唱盘空着 */
+  queue: string[] | null;
 }
 
-export const useJukebox = create<JukeboxStore>(() => ({ tracks: [], current: null, playing: false, mode: "all" }));
+export const useJukebox = create<JukeboxStore>(() => ({ tracks: [], current: null, playing: false, mode: "all", queue: null }));
+
+/** 正在放的这张唱片里的歌 */
+function playlist(): Track[] {
+  const { tracks, queue } = useJukebox.getState();
+  if (!queue) return [];
+  const byId = new Map(tracks.map((t) => [t.id, t]));
+  return queue.map((id) => byId.get(id)).filter((t): t is Track => !!t);
+}
+
+/** 换唱片：设好歌单；autoplay 时从第一首放起 */
+export async function loadRecord(ids: string[] | null, autoplay: boolean) {
+  pause();
+  if (player) player.removeAttribute("src");
+  useJukebox.setState({ queue: ids, current: null });
+  if (ids?.length && autoplay) await play(ids[0]);
+}
 
 const toast = (t: string, tone: "info" | "error" = "info") => useApp.getState().toast(t, tone);
 
@@ -81,9 +99,9 @@ export async function trackUrl(id: string): Promise<string> {
 
 export async function play(id?: string) {
   const st = useJukebox.getState();
-  const target = id ?? st.current ?? st.tracks[0]?.id;
+  const target = id ?? st.current ?? playlist()[0]?.id;
   if (!target) {
-    toast("歌单是空的。把音频文件拖到留声机上，或点「加歌」。");
+    toast("留声机上还没有唱片：去唱片架拿一张，对着留声机按 E 放上去。");
     return;
   }
   const p = el();
@@ -109,7 +127,8 @@ export function toggle() {
 }
 
 export async function next(delta = 1) {
-  const { tracks, current, mode } = useJukebox.getState();
+  const { current, mode } = useJukebox.getState();
+  const tracks = playlist();
   if (!tracks.length) return;
   let i = tracks.findIndex((t) => t.id === current);
   if (mode === "shuffle" && tracks.length > 1) {
@@ -129,7 +148,7 @@ export async function importAudio(paths: string[]): Promise<number> {
     const r = await api.audioImport(paths);
     await loadTracks();
     if (r.rejected.length) toast(`这些不是能播放的音频（支持 mp3、m4a、wav、aiff、flac）：${r.rejected.slice(0, 3).join("、")}${r.rejected.length > 3 ? " 等" : ""}`, "error");
-    if (r.added.length) toast(`歌单加了 ${r.added.length} 首`);
+    if (r.added.length) toast(`唱片架上多了 ${r.added.length} 首歌（同一专辑的放进同一张唱片）`);
     return r.added.length;
   } catch (e) {
     toast(`加歌失败：${errorMessage(e)}`, "error");
@@ -138,7 +157,7 @@ export async function importAudio(paths: string[]): Promise<number> {
 }
 
 export async function importAudioFromDialog() {
-  const picked = await openDialog({ multiple: true, directory: false, title: "加歌（复制到应用里，原文件不变）", filters: [{ name: "音频", extensions: ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "caf"] }] });
+  const picked = await openDialog({ multiple: true, directory: false, title: "导入音乐（复制到应用里，原文件不变）", filters: [{ name: "音频", extensions: ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "caf"] }] });
   const sources = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
   if (sources.length) await importAudio(sources);
 }
@@ -149,6 +168,8 @@ export async function removeTrack(id: string) {
     if (player) player.removeAttribute("src");
     useJukebox.setState({ current: null });
   }
+  const q = useJukebox.getState().queue;
+  if (q?.includes(id)) useJukebox.setState({ queue: q.filter((x) => x !== id) });
   await api.audioRemove(id).catch((e) => toast(errorMessage(e), "error"));
   await loadTracks();
 }

@@ -57,12 +57,18 @@ export class HandView {
   private rig = new THREE.Group();
   private arm: THREE.Mesh;
   private item: THREE.Object3D | null = null;
-  private itemType: FurnitureType | null | undefined = undefined;
+  /** 手上东西的标识：家具类型或 "record:…" / "tool:…"；undefined 表示还没设置过 */
+  private itemType: string | null | undefined = undefined;
+  private pendingBuild: (() => THREE.Object3D) | null = null;
+  private itemKind: "furniture" | "object" = "furniture";
+  /** F 细看：把手上的东西拿到眼前 */
+  private inspectT = 0;
+  inspecting = false;
   private swingT = 1;
   private useT = 1;
   private time = 0;
   private equipT = 1;
-  private pendingType: FurnitureType | null = null;
+  private pendingType: string | null = null;
   private bob = 0;
   private hemi: THREE.HemisphereLight;
   private reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -101,24 +107,68 @@ export class HandView {
     this.camera.updateProjectionMatrix();
   }
 
-  /** 切换手持物品：手先放下再举起 */
+  /** 切换手持物品（物品栏里的家具）：手先放下再举起 */
   setItem(type: FurnitureType | null) {
-    if (type === this.itemType) return;
-    if (this.itemType === undefined || this.reduceMotion) {
-      this.applyItem(type);
-      return;
-    }
-    this.pendingType = type;
-    this.equipT = 0;
+    this.setHeld(type, type ? () => this.furnitureModel(type) : null, "furniture");
   }
 
-  private applyItem(type: FurnitureType | null) {
-    this.itemType = type;
-    if (this.item) this.rig.remove(this.item);
+  /** 拿着任意东西（唱片、园艺工具）。key 相同就不换 */
+  setHeld(key: string | null, build: (() => THREE.Object3D) | null, kind: "furniture" | "object" = "object") {
+    // 换手动画进行中：以将要换上的那件为准
+    if (this.equipT < 1 ? key === this.pendingType : key === this.itemType) return;
+    this.itemKind = kind;
+    if (!key) this.inspecting = false;
+    if (this.itemType === undefined || this.reduceMotion) {
+      this.applyItem(key, build);
+      return;
+    }
+    this.pendingType = key;
+    this.pendingBuild = build;
+    if (this.equipT >= 1) this.equipT = 0;
+    // 动画后半段已经换过了：再从头放下、举起
+    else if (this.equipT >= 0.5) this.equipT = 1 - this.equipT;
+  }
+
+  private applyItem(key: string | null, build: (() => THREE.Object3D) | null) {
+    this.itemType = key;
+    if (this.item) {
+      this.rig.remove(this.item);
+      this.item.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.geometry.dispose();
+        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) if (!mat.userData?.shared) mat.dispose();
+      });
+    }
     this.item = null;
     this.arm.visible = true;
-    if (!type) return;
-    const model = buildFurniture({ id: "held", type, x: 0, z: 0, rot: 0 });
+    if (!key || !build) return;
+    const model = build();
+    if (this.itemKind === "object") {
+      const holder = new THREE.Group();
+      holder.add(model);
+      holder.position.set(-0.08, 0.2, -0.3);
+      // 手臂本身是斜着的：把东西转回来，大致正对镜头、稍微侧一点
+      const rigQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0.22, 0.05));
+      holder.quaternion.copy(rigQ.invert().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.15, -0.45, 0.06))));
+      holder.userData.base = { p: holder.position.clone(), r: holder.rotation.clone() };
+      this.item = holder;
+      this.rig.add(holder);
+      return;
+    }
+    this.placeFurnitureModel(model);
+  }
+
+  private furnitureModel(type: FurnitureType): THREE.Object3D {
+    return buildFurniture({ id: "held", type, x: 0, z: 0, rot: 0 });
+  }
+
+  /** F：拿到眼前细看 / 放下 */
+  setInspect(on: boolean) {
+    this.inspecting = on && !!this.item && this.itemKind === "object";
+  }
+
+  private placeFurnitureModel(model: THREE.Object3D) {
     model.position.set(0, 0, 0);
     model.rotation.set(0, 0, 0);
     // 去掉椅子等附属物，缩放到手掌大小
@@ -165,7 +215,7 @@ export class HandView {
     this.rig.position.y -= bobY;
     if (this.equipT < 1) {
       this.equipT = Math.min(1, this.equipT + dt * 4.5);
-      if (this.equipT >= 0.5 && this.pendingType !== undefined && this.itemType !== this.pendingType) this.applyItem(this.pendingType);
+      if (this.equipT >= 0.5 && this.pendingType !== undefined && this.itemType !== this.pendingType) this.applyItem(this.pendingType, this.pendingBuild);
       const down = this.equipT < 0.5 ? this.equipT * 2 : (1 - this.equipT) * 2;
       this.rig.position.y -= down * 0.5;
     }
@@ -188,6 +238,24 @@ export class HandView {
       this.rig.position.z -= u * 0.16;
       this.rig.position.y += u * 0.04;
       this.rig.rotation.x -= u * 0.25;
+    }
+    // 细看：东西移到画面中间、放大、正对镜头，轻轻转一点
+    const goal = this.inspecting ? 1 : 0;
+    this.inspectT += (goal - this.inspectT) * Math.min(1, dt * (this.reduceMotion ? 60 : 9));
+    const base = this.item?.userData.base as { p: THREE.Vector3; r: THREE.Euler } | undefined;
+    if (this.item && base) {
+      const k = this.inspectT;
+      // 目标在相机坐标里：正前方 0.42 处。先换算到手臂坐标系
+      this.rig.updateMatrixWorld(true);
+      const inv = this.rig.matrixWorld.clone().invert();
+      const front = new THREE.Vector3(-0.13, 0, -0.62).applyMatrix4(inv);
+      this.item.position.lerpVectors(base.p, front, k);
+      const q0 = new THREE.Quaternion().setFromEuler(base.r);
+      const wobble = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.05, this.reduceMotion ? 0 : Math.sin(this.time * 0.8) * 0.25, 0));
+      const q1 = this.rig.quaternion.clone().invert().multiply(wobble);
+      this.item.quaternion.slerpQuaternions(q0, q1, k);
+      this.item.scale.setScalar(1);
+      this.arm.visible = k < 0.6;
     }
   }
 

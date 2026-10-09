@@ -30,6 +30,7 @@ export type Gui =
   | { kind: "pets"; id?: string }
   | { kind: "sound" }
   | { kind: "jukebox" }
+  | { kind: "records" }
   | { kind: "floors" }
   | { kind: "butler"; settings?: boolean }
   | null;
@@ -45,6 +46,21 @@ interface WorldStore {
   /** 正在使用的书桌 */
   deskId: string | null;
   lookFallback: boolean;
+  /** 在院子里（物品栏换成园艺工具） */
+  outside: boolean;
+  /** 院子里物品栏选中的格子 */
+  gslot: number;
+  /** 手上拿着的东西（唱片） */
+  carry: { kind: "record"; id: string } | null;
+  /** F 细看手上的东西 */
+  inspect: boolean;
+  /** 留声机上的唱片（与 layout.deck 同步，界面订阅这个） */
+  deck: string | null;
+  setDeck(id: string | null): void;
+  setOutside(v: boolean): void;
+  setGslot(i: number): void;
+  setCarry(c: WorldStore["carry"]): void;
+  setInspect(v: boolean): void;
   setMode(m: WorldMode): void;
   openGui(g: Exclude<Gui, null>): void;
   closeGui(): void;
@@ -65,6 +81,23 @@ export const useWorld = create<WorldStore>((set, get) => ({
   target: null,
   deskId: null,
   lookFallback: false,
+  outside: false,
+  gslot: 0,
+  carry: null,
+  inspect: false,
+  deck: null,
+  setDeck: (deck) => {
+    const l = get().layout;
+    if (l) {
+      if (deck) l.deck = deck;
+      else delete l.deck;
+    }
+    set({ deck });
+  },
+  setOutside: (outside) => set({ outside }),
+  setGslot: (gslot) => set({ gslot }),
+  setCarry: (carry) => set({ carry, inspect: false }),
+  setInspect: (inspect) => set({ inspect }),
   setMode: (mode) => set({ mode, gui: mode === "gui" ? get().gui : null }),
   openGui: (gui) => set({ gui, mode: "gui" }),
   closeGui: () => set({ gui: null, mode: "idle" }),

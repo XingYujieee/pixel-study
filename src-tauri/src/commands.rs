@@ -437,6 +437,11 @@ pub fn audio_rename(app: AppHandle, id: String, name: String) -> Res<()> {
     audio_lib(&app).rename(&id, &name)
 }
 
+#[tauri::command]
+pub fn audio_update(app: AppHandle, ids: Vec<String>, patch: vault_core::audio::TrackPatch) -> Res<()> {
+    audio_lib(&app).update(&ids, &patch)
+}
+
 /// 播放用的绝对路径（前端转成 asset 地址）
 #[tauri::command]
 pub fn audio_path(app: AppHandle, id: String) -> Res<String> {

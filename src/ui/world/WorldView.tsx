@@ -14,6 +14,12 @@ import { ButlerGui } from "./ButlerGui";
 import { FloorsGui } from "./FloorsGui";
 import { isGroundFloor } from "../../world/floors";
 import { syncGarden } from "../../app/garden";
+import { applyToolHand, placeGarden } from "../../app/gardenTools";
+import { ejectDeck, putBack, restoreDeck, stopInspect, toggleInspect } from "../../app/records";
+import { releaseHold, startHold } from "../../app/hold";
+import { useJukebox } from "../../app/jukebox";
+import { GARDEN_HOTBAR } from "../../world/held";
+import { InspectCard, RecordsGui } from "./RecordsGui";
 import { JukeboxGui, SoundGui } from "./SoundGuis";
 import { sfx, stepSound } from "../../app/sound";
 import { syncPets } from "../../app/pets";
@@ -58,6 +64,11 @@ export function WorldView({ hidden }: { hidden: boolean }) {
         onInteract: (t) => interact(t),
         onPlace: (f) => placeFurniture(f),
         onPlaceRejected: (reason) => useApp.getState().toast(`放不下：${reason}`),
+        onGardenPlace: (tool, x, z) => placeGarden(tool, x, z),
+        onOutside: (out) => {
+          useWorld.getState().setOutside(out);
+          applyToolHand();
+        },
         onPlaceWall: (spot) => placeWall(spot),
         onPause: () => {
           engineRef.current?.cancelWallPlacing();
@@ -121,6 +132,8 @@ export function WorldView({ hidden }: { hidden: boolean }) {
       syncPets();
       layoutRef.current = current;
     }
+    restoreDeck();
+    applyToolHand();
     setPlayerSource(() => e.player());
     // 名牌用像素字体：字体加载完后重画一次
     void document.fonts?.load('12px "Fusion Pixel"', "书架名牌").then(() => engineRef.current?.refreshBooks()).catch(() => {});
@@ -169,9 +182,22 @@ export function WorldView({ hidden }: { hidden: boolean }) {
     e.setExplore(mode === "explore" && !hidden);
   }, [mode, hidden]);
 
+  // 手上拿什么：屋里是物品栏的家具，院子里是园艺工具，拿着唱片时是唱片
+  const gslot = useWorld((s) => s.gslot);
+  const outside = useWorld((s) => s.outside);
+  const carry = useWorld((s) => s.carry);
   useEffect(() => {
-    engineRef.current?.setSelected(HOTBAR[slot] ?? null);
-  }, [slot]);
+    applyToolHand();
+  }, [slot, gslot, outside, carry]);
+
+  // 唱片：歌单或布局变了就重新摆
+  const tracks = useJukebox((s) => s.tracks);
+  useEffect(() => {
+    restoreDeck();
+  }, [tracks]);
+  useEffect(() => {
+    restoreDeck();
+  }, [layoutVersion, layout]);
 
   // 书房快捷键（探索模式）
   useEffect(() => {
@@ -183,6 +209,11 @@ export function WorldView({ hidden }: { hidden: boolean }) {
       const tgt = ev.target as HTMLElement | null;
       const typing = !!tgt && (tgt.isContentEditable || tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA");
       if (ev.key === "Escape") {
+        if (w.inspect) {
+          ev.preventDefault();
+          stopInspect();
+          return;
+        }
         if (w.mode === "gui") {
           ev.preventDefault();
           w.closeGui();
@@ -200,7 +231,10 @@ export function WorldView({ hidden }: { hidden: boolean }) {
       }
       if (typing || w.mode !== "explore") return;
       const e = engineRef.current;
-      if (/^Digit[0-9]$/.test(ev.code)) {
+      if (/^Digit[0-9]$/.test(ev.code) && w.outside) {
+        const n = Number(ev.code.slice(5));
+        if (n >= 1 && n <= GARDEN_HOTBAR.length) w.setGslot(n - 1);
+      } else if (/^Digit[0-9]$/.test(ev.code)) {
         const n = Number(ev.code.slice(5));
         if (n === 0 || n <= HOTBAR.length) w.setSlot(n === 0 ? 9 : n - 1);
       } else if (ev.code === "Minus" && HOTBAR.length > 10) {
@@ -210,9 +244,19 @@ export function WorldView({ hidden }: { hidden: boolean }) {
       } else if (ev.code === "KeyC") {
         ev.preventDefault();
         openCapture();
+      } else if (ev.code === "KeyF" && w.carry) {
+        toggleInspect();
       } else if (ev.code === "KeyE" || ev.code === "KeyF") {
+        if (ev.repeat) return;
         const t = w.target;
-        if (t && t.kind !== "floor" && t.kind !== "wallspot") interact(t);
+        if (!t || t.kind === "floor" || t.kind === "wallspot" || t.kind === "gardenspot") return;
+        if (w.inspect) stopInspect();
+        // 留声机上有唱片、手上空着：短按打开播放面板，按住取下唱片
+        if (t.kind === "furniture" && t.type === "jukebox" && !w.carry && w.deck) {
+          startHold("取下唱片", 550, () => void ejectDeck(true), () => interact(t));
+          return;
+        }
+        interact(t);
       } else if (ev.code === "KeyR") {
         // 挂画框时：R 换尺寸
         const pl = e?.isWallPlacing;
@@ -238,7 +282,9 @@ export function WorldView({ hidden }: { hidden: boolean }) {
         e?.releaseLock();
         w.openGui({ kind: "help" });
       } else if (ev.code === "KeyQ") {
-        w.setSlot(0);
+        if (w.carry) putBack();
+        else if (w.outside) w.setGslot(0);
+        else w.setSlot(0);
       } else if (ev.code === "KeyT") {
         e?.releaseLock();
         w.openGui({ kind: "theme" });
@@ -256,13 +302,29 @@ export function WorldView({ hidden }: { hidden: boolean }) {
     const onWheel = (ev: WheelEvent) => {
       const w = useWorld.getState();
       if (w.mode !== "explore") return;
+      if (w.outside) {
+        const g = GARDEN_HOTBAR.length;
+        w.setGslot((w.gslot + (ev.deltaY > 0 ? 1 : -1) + g) % g);
+        return;
+      }
       const n = HOTBAR.length;
       w.setSlot((w.slot + (ev.deltaY > 0 ? 1 : -1) + n) % n);
     };
+    // 松开 E 或鼠标：没按满的"按住"取消
+    const onKeyUp = (ev: KeyboardEvent) => {
+      if (ev.code === "KeyE" || ev.code === "KeyF") releaseHold();
+    };
+    const onMouseUp = (ev: MouseEvent) => {
+      if (ev.button === 0) releaseHold();
+    };
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("wheel", onWheel);
     };
   }, []);
@@ -304,6 +366,8 @@ export function WorldView({ hidden }: { hidden: boolean }) {
           {gui?.kind === "pets" && <PetsGui focus={gui.id} />}
           {gui?.kind === "sound" && <SoundGui />}
           {gui?.kind === "jukebox" && <JukeboxGui />}
+          {gui?.kind === "records" && <RecordsGui />}
+          {mode === "explore" && <InspectCard />}
           {gui?.kind === "floors" && <FloorsGui />}
           {gui?.kind === "butler" && <ButlerGui settings={gui.settings} />}
           {!layout && <div className="world-loading mc-text">正在整理书房…</div>}

@@ -665,7 +665,8 @@ function jukebox(t: TextureSet): THREE.Group {
   disc.name = "disc";
   disc.position.set(-0.08, 0.57, 0.05);
   disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.025, 16), new THREE.MeshLambertMaterial({ color: 0x1c1c22 })));
-  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 12), new THREE.MeshLambertMaterial({ color: 0xc8423a }));
+  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 12), new THREE.MeshLambertMaterial({ color: 0xc8423a }));
+  label.name = "disclabel";
   disc.add(label);
   const groove = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.031, 0.22), new THREE.MeshLambertMaterial({ color: 0x3a3a44 }));
   groove.position.z = 0.17;
@@ -694,6 +695,44 @@ function jukebox(t: TextureSet): THREE.Group {
   notes.name = "notesAnchor";
   notes.position.set(0.15, 1.25, 0);
   g.add(notes);
+  return g;
+}
+
+/** 唱片架：两层格子，每层 5 张唱片封面朝外斜靠着；顶上靠着一张黑胶当招牌 */
+export const RECORD_SLOT = { w: 0.32, h: 0.32, d: 0.03 };
+
+/** 第 i 格唱片在唱片架里的位置（模型坐标） */
+export function recordSlot(i: number): { x: number; y: number; z: number; rx: number } {
+  const row = Math.floor(i / 5);
+  const col = i % 5;
+  // 先摆上层（和视线差不多高），再摆下层
+  return { x: -0.72 + col * 0.36, y: (row === 0 ? 0.88 : 0.1) + RECORD_SLOT.h / 2, z: 0.06, rx: -0.14 };
+}
+
+function recordShelf(t: TextureSet): THREE.Group {
+  const g = new THREE.Group();
+  const wood = lambert("rswood", t.shelfWood);
+  const dark = lambert("rsdark", t.shelfWoodDark);
+  for (const x of [-0.95, 0.95]) g.add(box(0.1, 1.6, 0.8, wood, x, 0, -0.05));
+  g.add(box(2, 0.06, 0.8, wood, 0, 0, -0.05));
+  g.add(box(2, 0.06, 0.8, wood, 0, 0.78, -0.05));
+  g.add(box(2, 0.06, 0.8, wood, 0, 1.54, -0.05));
+  g.add(box(1.8, 1.5, 0.04, dark, 0, 0.06, -0.43));
+  // 每层前面一根挡条，唱片不会滑出来
+  g.add(box(1.8, 0.05, 0.04, dark, 0, 0.06, 0.3));
+  g.add(box(1.8, 0.05, 0.04, dark, 0, 0.84, 0.3));
+  // 顶上靠着的一张黑胶
+  const vinyl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 16), new THREE.MeshLambertMaterial({ color: 0x18181e }));
+  vinyl.rotation.x = Math.PI / 2 - 0.25;
+  vinyl.position.set(0.55, 1.82, -0.2);
+  g.add(vinyl);
+  const lab = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.022, 12), new THREE.MeshLambertMaterial({ color: 0xe0b04a }));
+  lab.rotation.copy(vinyl.rotation);
+  lab.position.copy(vinyl.position);
+  g.add(lab);
+  const sleeves = new THREE.Group();
+  sleeves.name = "sleeves";
+  g.add(sleeves);
   return g;
 }
 
@@ -740,6 +779,7 @@ const BUILDERS: Record<FurnitureType, (t: TextureSet, f: Furniture) => THREE.Gro
   carpet: (t, f) => carpet(t, f),
   pond: (t) => pond(t),
   jukebox: (t) => jukebox(t),
+  recordshelf: (t) => recordShelf(t),
 };
 
 /** 生成家具模型并放到世界坐标；userData.fid 标识家具 */

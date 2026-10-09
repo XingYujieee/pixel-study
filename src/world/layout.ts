@@ -10,9 +10,9 @@ import type { Pet, PetKind } from "./pets";
 import { parseGarden, type GardenState } from "./garden";
 
 export const ROOM = { w: 14, d: 12, h: 6 } as const;
-export const LAYOUT_VERSION = 5;
+export const LAYOUT_VERSION = 6;
 
-export type FurnitureType = "bookshelf" | "desk" | "workbench" | "aibench" | "pond" | "chest" | "lantern" | "plant" | "carpet" | "jukebox" | "stairs";
+export type FurnitureType = "bookshelf" | "desk" | "workbench" | "aibench" | "pond" | "chest" | "lantern" | "plant" | "carpet" | "jukebox" | "recordshelf" | "stairs";
 
 /** 地毯氛围：站上去时的背景声与光线（只在站着的时候生效，不改任何设置） */
 export type Ambience = "none" | "rain" | "fire" | "night" | "waves" | "wind" | "birds" | "track";
@@ -72,6 +72,8 @@ export interface Layout {
   floor?: string;
   /** 院子里的花园（种的树、花、草垛、杂草……）；没有时用默认花园 */
   garden?: GardenState;
+  /** 留声机上放着的唱片（唱片编号） */
+  deck?: string;
   /** 管家（小鸟） */
   butler?: { name: string; kind: BirdKind; perch?: { x: number; z: number } };
 }
@@ -106,7 +108,8 @@ export const SPECS: Record<FurnitureType, FurnitureSpec> = {
   workbench: { name: "工作台", w: 1, d: 1, h: 1, solid: true, hint: "左键制作新的书（Markdown / Word / TXT）" },
   aibench: { name: "AI 工作台", w: 1, d: 1, h: 1, solid: true, hint: "左键向 AI 提问（Claude / OpenAI / 其他接口）" },
   pond: { name: "鱼塘", w: 2, d: 2, h: 0.5, solid: true, hint: "左键打开灵感池 · C 随手记一句" },
-  jukebox: { name: "留声机", w: 1, d: 1, h: 1.3, solid: true, hint: "左键打开歌单 · 把音频文件拖到上面加歌" },
+  jukebox: { name: "留声机", w: 1, d: 1, h: 1.3, solid: true, hint: "拿着唱片按 E 放上去 · 左键打开播放面板 · 按住 E 取下唱片" },
+  recordshelf: { name: "唱片架", w: 2, d: 1, h: 1.6, solid: true, hint: "对准一张唱片按 E 拿起来 · 左键空处：导入音乐、整理唱片" },
   chest: { name: "资料箱", w: 1, d: 1, h: 1, solid: true, hint: "左键打开：导入文件、查看 PDF 等资料" },
   lantern: { name: "灯笼", w: 1, d: 1, h: 1, solid: true, hint: "装饰照明" },
   plant: { name: "盆栽", w: 1, d: 1, h: 1, solid: true, hint: "装饰" },
@@ -115,7 +118,7 @@ export const SPECS: Record<FurnitureType, FurnitureSpec> = {
 };
 
 /** 物品栏：1–9 与 0 共十格，第一格是空手 */
-export const HOTBAR: (FurnitureType | null)[] = [null, "bookshelf", "desk", "workbench", "aibench", "pond", "chest", "lantern", "plant", "carpet", "jukebox", "stairs"];
+export const HOTBAR: (FurnitureType | null)[] = [null, "bookshelf", "desk", "workbench", "aibench", "pond", "chest", "lantern", "plant", "carpet", "jukebox", "stairs", "recordshelf"];
 
 /** 旋转后的占地尺寸 */
 export function footprint(f: Pick<Furniture, "type" | "rot">): { w: number; d: number } {
@@ -259,6 +262,7 @@ export function defaultLayout(files: Iterable<FileEntry>): Layout {
     { id: newId("ai"), type: "aibench", x: 13, z: 9, rot: 3 },
     { id: newId("pond"), type: "pond", x: 12, z: 7, rot: 3 },
     { id: newId("jukebox"), type: "jukebox", x: 1, z: 11, rot: 2 },
+    { id: newId("records"), type: "recordshelf", x: 2, z: 11, rot: 2 },
     { id: newId("chest"), type: "chest", x: 0, z: 10, rot: 1 },
     { id: newId("lamp"), type: "lantern", x: 13, z: 3, rot: 0 },
     { id: newId("lamp"), type: "lantern", x: 0, z: 0, rot: 0 },
@@ -289,6 +293,8 @@ export function parseLayout(raw: unknown): Layout | null {
   if (pets.length) out.pets = pets;
   const garden = parseGarden((r as { garden?: unknown }).garden);
   if (garden) out.garden = garden;
+  const deck = (r as { deck?: unknown }).deck;
+  if (typeof deck === "string" && deck.length < 200) out.deck = deck;
   const bt = (r as { butler?: Partial<NonNullable<Layout["butler"]>> }).butler;
   if (bt && typeof bt.name === "string") {
     out.butler = { name: bt.name.slice(0, 16) || "咕咕", kind: (["owl", "parrot", "sparrow"] as BirdKind[]).includes(bt.kind as BirdKind) ? (bt.kind as BirdKind) : "owl" };
@@ -361,6 +367,24 @@ export function parseLayout(raw: unknown): Layout | null {
       [4, 9],
     ] as [number, number][]) {
       const f: Furniture = { id: newId("jukebox"), type: "jukebox", x, z, rot: 2 };
+      if (canPlace(out, f).ok) {
+        out.furniture.push(f);
+        break;
+      }
+    }
+  }
+  // 版本 5 → 6：留声机旁边放一个唱片架
+  if (r.version < 6 && !out.furniture.some((f) => f.type === "recordshelf")) {
+    const jb = out.furniture.find((f) => f.type === "jukebox");
+    const spots: [number, number, Rot][] = [
+      ...(jb ? ([[jb.x + 1, jb.z, jb.rot], [jb.x - 2, jb.z, jb.rot], [jb.x, jb.z - 1, jb.rot]] as [number, number, Rot][]) : []),
+      [2, 11, 2],
+      [4, 11, 2],
+      [9, 11, 2],
+      [3, 9, 2],
+    ];
+    for (const [x, z, rot] of spots) {
+      const f: Furniture = { id: newId("records"), type: "recordshelf", x, z, rot };
       if (canPlace(out, f).ok) {
         out.furniture.push(f);
         break;

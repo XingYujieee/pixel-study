@@ -164,6 +164,17 @@
           window.__MOCK_TRACKS__ = [...(window.__MOCK_TRACKS__ || []), ...added];
           return { added, rejected: args.sources.filter((p) => !/\.(mp3|m4a|wav)$/i.test(p)).map((p) => p.split("/").pop()) };
         }
+        case "audio_update": {
+          const norm = (v) => (v && v.trim() ? v.trim() : undefined);
+          for (const t of window.__MOCK_TRACKS__ || []) {
+            if (!args.ids.includes(t.id)) continue;
+            if (args.patch.album !== undefined) t.album = norm(args.patch.album);
+            if (args.patch.artist !== undefined) t.artist = norm(args.patch.artist);
+            if (args.patch.title !== undefined) t.title = norm(args.patch.title);
+            if (args.patch.cover !== undefined) t.cover = args.patch.cover;
+          }
+          return null;
+        }
         case "audio_remove":
           window.__MOCK_TRACKS__ = (window.__MOCK_TRACKS__ || []).filter((t) => t.id !== args.id);
           return null;

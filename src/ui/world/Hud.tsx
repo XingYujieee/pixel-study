@@ -11,6 +11,10 @@ import { pendingCount, useStudy } from "../../app/study";
 import { formatLeft, remainingMs, useHourglass } from "../../app/hourglass";
 import { useRealWeather } from "../../app/realWeather";
 import { Clocks } from "./Clocks";
+import { GARDEN_HOTBAR, PLACE_LABEL, TOOL_NAMES } from "../../world/held";
+import { useHold } from "../../app/hold";
+import { recordById } from "../../app/records";
+import { useJukebox } from "../../app/jukebox";
 
 
 export function Hud() {
@@ -22,6 +26,15 @@ export function Hud() {
   const pending = useMemo(() => pendingCount(), [filesVersion]);
   const bubble = useStudy((s) => s.bubble);
   const selected = HOTBAR[slot];
+  const outside = useWorld((s) => s.outside);
+  const gslot = useWorld((s) => s.gslot);
+  const carry = useWorld((s) => s.carry);
+  const inspect = useWorld((s) => s.inspect);
+  const deck = useWorld((s) => s.deck);
+  useJukebox((s) => s.tracks);
+  const tool = outside && !carry ? GARDEN_HOTBAR[gslot] : null;
+  const holdLabel = useHold((s) => s.label);
+  const held = carry ? recordById(carry.id) : undefined;
 
   const preview = useBookPreview(target?.kind === "book" && mode === "explore" ? target.path : null);
   let label: string | null = null;
@@ -29,6 +42,20 @@ export function Hud() {
   if (target?.kind === "book") {
     label = basename(target.path).replace(/\.(md|markdown)$/i, "");
     hint = /\.(md|markdown|txt|docx)$/i.test(target.path) ? "左键 / E：带到书桌写作" : "左键 / E：用系统应用打开";
+  } else if (target?.kind === "record") {
+    const r = recordById(target.id);
+    label = r ? `《${r.title}》${r.artist ? ` · ${r.artist}` : ""}` : "唱片";
+    hint = held ? "[E] 换成这张（手上那张放回去）" : "[E] 拿起来";
+  } else if (target?.kind === "furniture" && target.type === "jukebox") {
+    const r = recordById(deck);
+    label = r ? `留声机 · 《${r.title}》` : "留声机 · 空着";
+    hint = held ? `[E] 放上《${held.title}》` : r ? "[E] 播放面板 · 按住 [E] 取下唱片" : "去唱片架拿一张唱片，再按 [E] 放上来";
+  } else if (target?.kind === "furniture" && target.type === "recordshelf") {
+    label = "唱片架";
+    hint = held ? "[E] 放回去" : "[E] 导入音乐、整理唱片 · 对准一张唱片按 [E] 拿起来";
+  } else if (target?.kind === "gardenspot") {
+    label = PLACE_LABEL[target.tool];
+    hint = target.valid ? "右键种下" : `种不了：${target.reason}`;
   } else if (target?.kind === "furniture") {
     const f = furniture(target.fid);
     label =
@@ -54,7 +81,14 @@ export function Hud() {
   } else if (target?.kind === "garden") {
     const names: Record<string, string> = { weed: "杂草", flower: "野花", trunk: "树", bush: "灌木", hay: "草垛", bed: "花坛", farmland: "菜地", bench: "长椅", table: "野餐桌", woodpile: "柴堆", well: "井" };
     label = names[target.item] ?? "花园";
-    hint = target.item === "weed" ? "左键：拔掉" : target.item === "flower" ? "左键：摘掉" : "G 叫管家：可以让它移走、在旁边种点什么";
+    hint =
+      tool === "shovel"
+        ? "按住左键 / [E] 挖掉"
+        : target.item === "weed"
+          ? "左键：拔掉"
+          : target.item === "flower"
+            ? "左键：摘掉"
+            : "换铲子（8）按住左键挖掉 · 或按 G 叫管家";
   } else if (target?.kind === "door") {
     label = target.open ? "门 · 开着" : "门";
     hint = target.open ? "左键 / E：关门" : "左键 / E：开门，出去是花园";
@@ -77,27 +111,62 @@ export function Hud() {
         </span>
         <span className="hud-keys">WASD 移动 · 空格 跳 · G 管家 · T 换屋子 · P 宠物 · C 随手记 · H 帮助 · Esc 菜单 · ⌘K 搜索</span>
       </div>
-      {label && mode === "explore" && (
+      {label && mode === "explore" && !inspect && !holdLabel && (
         <div className="target-label">
           <div className="mc-text big">{label}</div>
           {preview && <div className="book-peek">{preview}</div>}
           {hint && <div className="mc-text small">{hint}</div>}
         </div>
       )}
-      <div className="hotbar" role="toolbar" aria-label="物品栏">
-        {HOTBAR.map((t, i) => (
-          <button
-            key={i}
-            className={`hot-slot ${i === slot ? "sel" : ""}`}
-            onClick={() => useWorld.getState().setSlot(i)}
-            title={t ? `${SPECS[t].name}（右键放置）` : "空手（左键交互）"}
-          >
-            <img className="hot-icon" src={iconUrl(t ?? "hand")} alt="" draggable={false} />
-            <span className="hot-num mc-text">{i < 9 ? i + 1 : i === 9 ? 0 : i === 10 ? "-" : "="}</span>
-          </button>
-        ))}
+      <HoldRing />
+      {outside ? (
+        <div className="hotbar garden" role="toolbar" aria-label="园艺工具">
+          {GARDEN_HOTBAR.map((t, i) => (
+            <button key={i} className={`hot-slot ${i === gslot ? "sel" : ""}`} onClick={() => useWorld.getState().setGslot(i)} title={t ? TOOL_NAMES[t] : "空手"}>
+              <img className="hot-icon" src={iconUrl(t ?? "hand")} alt="" draggable={false} />
+              <span className="hot-num mc-text">{i + 1}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="hotbar" role="toolbar" aria-label="物品栏">
+          {HOTBAR.map((t, i) => (
+            <button
+              key={i}
+              className={`hot-slot ${i === slot ? "sel" : ""}`}
+              onClick={() => useWorld.getState().setSlot(i)}
+              title={t ? `${SPECS[t].name}（右键放置）` : "空手（左键交互）"}
+            >
+              <img className="hot-icon" src={iconUrl(t ?? "hand")} alt="" draggable={false} />
+              <span className="hot-num mc-text">{i < 9 ? i + 1 : i === 9 ? 0 : i === 10 ? "-" : i === 11 ? "=" : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="hot-name mc-text">
+        {held
+          ? `拿着《${held.title}》 · [E] 放上留声机 · [F] ${inspect ? "放下" : "细看"} · [Q] 放回唱片架`
+          : outside
+            ? tool
+              ? tool === "shovel"
+                ? "铲子 · 对准花园里的东西按住左键挖掉"
+                : `${TOOL_NAMES[tool]} · 右键种在地上`
+              : "空手 · 左键拔草摘花 · 2–8 园艺工具"
+            : selected
+              ? `${SPECS[selected].name} · 右键放到地上`
+              : "空手 · 左键与家具和书交互"}
       </div>
-      <div className="hot-name mc-text">{selected ? `${SPECS[selected].name} · 右键放到地上` : "空手 · 左键与家具和书交互"}</div>
+    </div>
+  );
+}
+
+/** 按住才能做的事：准星外一圈进度 */
+function HoldRing() {
+  const { label, progress } = useHold();
+  if (!label) return null;
+  return (
+    <div className="hold-ring" style={{ ["--p" as string]: `${Math.round(progress * 360)}deg` }}>
+      <span className="mc-text small">{label}</span>
     </div>
   );
 }

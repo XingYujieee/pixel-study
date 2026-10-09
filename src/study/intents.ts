@@ -8,6 +8,7 @@ export type Intent =
   | { tool: "floors"; input: { action: "go" | "add" | "list"; floor?: string } }
   | { tool: "capture_idea"; input: { text: string } }
   | { tool: "music"; input: { action: "play" | "stop" } }
+  | { tool: "record"; input: { action: "play" | "stop" | "list"; query?: string } }
   | { tool: "scene"; input: { hour?: number; weather?: string } }
   | { tool: "library_overview"; input: Record<string, never> }
   | { tool: "time"; input: Record<string, never> }
@@ -60,6 +61,11 @@ export function parseIntent(raw: string): Intent | null {
   const cap = /^(帮我)?(记一下|记下来|记一笔|记住|备忘)[:：,，\s]*(.+)$/.exec(s);
   if (cap) return { tool: "capture_idea", input: { text: cap[3].trim() } };
   // 音乐与天气
+  const rec = /(放|听|来)(一?张|一下)?《(.+?)》/.exec(s);
+  if (rec) return { tool: "record", input: { action: "play", query: rec[3] } };
+  if (/(有|有哪些|有什么|看看)(的)?唱片|唱片(有哪些|都有什么)/.test(s)) return { tool: "record", input: { action: "list" } };
+  if (/(放|换|来)(一?张|张)?唱片/.test(s)) return { tool: "record", input: { action: "play" } };
+  if (/(停|关)(掉|下|了)?(唱片|留声机)/.test(s)) return { tool: "record", input: { action: "stop" } };
   if (/(停|关)(掉|下|了)?(音乐|歌)|安静/.test(s)) return { tool: "music", input: { action: "stop" } };
   if (/(放|来)(一?首|点|些)?(音乐|歌|曲子)/.test(s)) return { tool: "music", input: { action: "play" } };
   if (/下雨/.test(s)) return { tool: "scene", input: { weather: "rain" } };
@@ -87,5 +93,6 @@ export const OFFLINE_HELP = [
   "「种三棵树」「在这种点花」「砍掉这棵树」「除草」：打理花园",
   "「去二楼」「再加一层」：楼层",
   "「记一下：……」：随手记进鱼塘",
+  "「放张唱片」「放《叶惠美》」「有哪些唱片」：唱片架和留声机",
   "「放首音乐」「下雨」「变成晚上」",
 ];

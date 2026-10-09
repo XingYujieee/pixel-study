@@ -1,5 +1,8 @@
 // 物品栏图标：16×16 像素画，运行时用 canvas 绘制为 data URL（原创图案）。
 import type { FurnitureType } from "./layout";
+import type { GardenTool } from "./held";
+
+export type IconName = FurnitureType | GardenTool | "hand";
 
 type Px = [number, number, number, number, string];
 
@@ -18,7 +21,70 @@ const WOOD = "#9a6a3a";
 const WOOD_D = "#5e3c20";
 const WOOD_L = "#c48f55";
 
-const ICONS: Record<FurnitureType | "hand", () => string> = {
+const ICONS: Record<IconName, () => string> = {
+  tree: () =>
+    draw([
+      [5, 12, 6, 3, "#8a5a3a"],
+      [7, 7, 2, 5, "#6b4a2a"],
+      [4, 3, 8, 5, "#4f9a3c"],
+      [6, 1, 4, 2, "#6fbf55"],
+      [5, 4, 2, 1, "#6fbf55"],
+    ]),
+  flower: () =>
+    draw([
+      [4, 3, 8, 11, "#f2e2b8"],
+      [4, 3, 8, 1, "#c8a070"],
+      [6, 6, 4, 4, "#e8604a"],
+      [7, 7, 2, 2, "#ffd166"],
+      [7, 10, 2, 3, "#4f9a3c"],
+    ]),
+  bush: () =>
+    draw([
+      [2, 5, 12, 9, "#3e8a35"],
+      [4, 3, 8, 3, "#3e8a35"],
+      [5, 4, 3, 2, "#5aab48"],
+      [10, 8, 2, 2, "#5aab48"],
+      [2, 13, 12, 1, "#2a6a25"],
+    ]),
+  hay: () =>
+    draw([
+      [2, 3, 12, 11, "#d8b04a"],
+      [2, 6, 12, 1, "#a8742a"],
+      [2, 11, 12, 1, "#a8742a"],
+      [4, 4, 1, 2, "#f0d070"],
+      [9, 8, 1, 2, "#f0d070"],
+    ]),
+  bed: () =>
+    draw([
+      [1, 8, 14, 6, "#9a6a3a"],
+      [2, 8, 12, 2, "#5a3a24"],
+      [4, 4, 2, 4, "#4f9a3c"],
+      [3, 3, 4, 2, "#e86a8a"],
+      [10, 4, 2, 4, "#4f9a3c"],
+      [9, 3, 4, 2, "#f6c86a"],
+    ]),
+  farmland: () =>
+    draw([
+      [1, 6, 14, 8, "#6b4a2a"],
+      [3, 6, 2, 8, "#4a3018"],
+      [7, 6, 2, 8, "#4a3018"],
+      [11, 6, 2, 8, "#4a3018"],
+      [5, 3, 1, 3, "#6fbf55"],
+      [9, 2, 1, 4, "#6fbf55"],
+    ]),
+  shovel: () =>
+    draw([
+      [10, 1, 2, 2, "#6b4a2a"],
+      [9, 1, 4, 1, "#6b4a2a"],
+      [10, 3, 1, 1, "#9a6a3a"],
+      [9, 4, 1, 1, "#9a6a3a"],
+      [8, 5, 1, 1, "#9a6a3a"],
+      [7, 6, 1, 1, "#9a6a3a"],
+      [6, 7, 1, 1, "#9a6a3a"],
+      [2, 8, 5, 5, "#b8bcc4"],
+      [3, 12, 3, 2, "#b8bcc4"],
+      [3, 9, 1, 3, "#e0e4ec"],
+    ]),
   stairs: () =>
     draw([
       [10, 2, 4, 12, WOOD],
@@ -150,6 +216,21 @@ const ICONS: Record<FurnitureType | "hand", () => string> = {
       [8, 1, 6, 1, "#e8c070"],
       [7, 11, 2, 1, "#d9a84a"],
     ]),
+  recordshelf: () =>
+    draw([
+      [1, 3, 14, 12, "#5e3c20"],
+      [2, 4, 12, 4, "#2a1a10"],
+      [2, 10, 12, 4, "#2a1a10"],
+      [2, 4, 3, 4, "#e8604a"],
+      [5, 4, 3, 4, "#4a8ad8"],
+      [8, 4, 3, 4, "#f6c86a"],
+      [11, 4, 3, 4, "#8fd694"],
+      [2, 10, 3, 4, "#c77dff"],
+      [5, 10, 3, 4, "#f2a65a"],
+      [8, 10, 3, 4, "#1c1c22"],
+      [9, 11, 1, 1, "#c8423a"],
+      [1, 8, 14, 2, "#9a6a3a"],
+    ]),
   carpet: () =>
     draw([
       [1, 5, 14, 7, "#8c2f2a"],
@@ -162,7 +243,7 @@ const ICONS: Record<FurnitureType | "hand", () => string> = {
 
 const cache = new Map<string, string>();
 
-export function iconUrl(type: FurnitureType | "hand"): string {
+export function iconUrl(type: IconName): string {
   let u = cache.get(type);
   if (!u) {
     u = ICONS[type]();

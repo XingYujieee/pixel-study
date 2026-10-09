@@ -50,7 +50,8 @@ First-person pixel world · local-file writing · shares a vault with Obsidian
 | ✍️ **Notion-style writing** | Type `/` for a command menu, select text for a formatting toolbar, and press Tab to move through table cells. Lines without the cursor render live, while the file stays Obsidian-compatible Markdown. |
 | 📄 **Word documents too** | `.docx` files open in a page-style editor on the desk. You get a warning before any formatting could be lost, and the original is backed up before the first save. |
 | 🦉 **A butler bird** | Press `G` to call it. Ask where a note is and it flies you there; ask it to sort the shelves, plant trees or pull weeds. Connect an LLM and you can chat freely. It always asks before changing files. |
-| 🌿 **Yard and garden** | The south door opens onto a fenced garden with flower beds, a vegetable patch and a well. A few weeds sprout each day; pull them by hand. |
+| 🌿 **Yard and garden** | The south door opens onto a fenced garden with flower beds, a vegetable patch and a well. Switch to garden tools to plant trees, flowers and hay yourself, or hold the shovel to dig things up. |
+| 💿 **Record shelf** | Imported music becomes records, one per album, each with a pixel-art cover drawn from its name. Pick one up with `E`, look at it with `F`, and put it on the gramophone to play. |
 | 🐱 **Pets and sound** | Cats, dogs, rabbits, chicks and foxes follow you around. Footsteps, rain and the fireplace are synthesised live, and background music is composed on the fly in six styles. |
 | 🔒 **Local-first** | No account and no cloud sync. Imports copy, removals go to `.trash/`, and every save checks for outside edits. API keys live in the system Keychain. |
 
@@ -120,6 +121,8 @@ Pushing a `v*` tag makes CI build a universal `.dmg` on macOS and attach it to a
 | `1`–`9` `0` `-` `=` | Hotbar slots (`=` is stairs) |
 | `X` | Remove furniture (files are kept) |
 | `G` | Call the butler |
+| `E` / `F` / `Q` | Pick up a record / inspect it / put it back; hold `E` at the gramophone to take it off |
+| `1`–`8` (outdoors) | Garden tools: right-click to plant, hold left click with the shovel to dig |
 | `T` / `P` / `M` | Room theme / pets / sound |
 | `C` | Jot down an idea |
 | `H` | Help |

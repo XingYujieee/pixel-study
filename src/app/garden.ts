@@ -136,3 +136,29 @@ export function gardenItemAt(x: number, z: number): GardenBlock | undefined {
 }
 
 export { gardenSummary } from "../world/gardenEdit";
+
+/** 玩家自己在 (x, z) 种 / 放一样东西（右键）。返回失败原因 */
+export function plantAt(kind: PlantKind, x: number, z: number): string | null {
+  const r = plant(items(), kind, x, z, Math.floor(Math.random() * 4));
+  if ("error" in r) return r.error;
+  commit(r.items);
+  void import("./sound").then((m) => m.sfx(kind === "hay" || kind === "bed" ? "place" : "plant"));
+  return null;
+}
+
+/** 铲子挖掉一格上的东西（路灯挖不动） */
+export function digAt(x: number, z: number): GardenBlock | null {
+  const list = items();
+  const b = list.find((it) => it.x === x && it.z === z);
+  if (!b || b.kind === "post" || b.kind === "path" || b.kind === "chimney") return null;
+  // 草垛一次挖掉一层
+  if (b.kind === "hay" && b.h > 1) commit(list.map((it) => (it === b ? { ...it, h: it.h - 1 } : it)));
+  else commit(removeAt(list, x, z)!.items);
+  void import("./sound").then((m) => m.sfx("dig"));
+  return b;
+}
+
+/** 挖一样东西要按多久（毫秒） */
+export function digTime(kind: GardenBlock["kind"]): number {
+  return kind === "trunk" ? 1400 : kind === "weed" || kind === "flower" ? 300 : kind === "well" ? 2000 : 800;
+}

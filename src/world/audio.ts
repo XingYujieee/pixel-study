@@ -16,6 +16,10 @@ export type Sfx =
   | "page"
   | "place"
   | "pop"
+  | "needle"
+  | "sleeve"
+  | "dig"
+  | "plant"
   | "splash"
   | "chime"
   | "thunder"
@@ -363,6 +367,24 @@ export class AudioEngine {
         break;
       case "pop":
         this.sweep(out, 520 * r, 1250 * r, 0.08, 0.25 * vol);
+        break;
+      case "needle":
+        // 唱针落下：一声轻响，跟着几下沙沙的底噪
+        this.blip(out, 140 * r, 0.06, 0.25 * vol);
+        this.burst(out, 0.5, 4200, 0.08 * vol, "highpass", 0.05, false, 3000);
+        for (let i = 0; i < 4; i++) this.burst(out, 0.015, 6000, 0.12 * vol, "highpass", 0.1 + i * 0.13 + Math.random() * 0.05, false, 5000);
+        break;
+      case "sleeve":
+        // 从封套里抽出唱片：纸面滑动
+        this.burst(out, 0.28, 1600, 0.22 * vol, "bandpass", 0, false, 2600);
+        break;
+      case "dig":
+        this.burst(out, 0.16, 500, 0.4 * vol, "lowpass", 0, false, 300);
+        this.burst(out, 0.1, 1800, 0.18 * vol, "bandpass", 0.05, false, 1200);
+        break;
+      case "plant":
+        this.burst(out, 0.12, 700, 0.3 * vol, "lowpass", 0, false, 400);
+        this.sweep(out, 300 * r, 600 * r, 0.1, 0.15 * vol, 0.08);
         break;
       case "splash":
         this.burst(out, 0.45, 2600, 0.45 * vol, "lowpass", 0, false, 400);

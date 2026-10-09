@@ -84,12 +84,17 @@ describe("布局", () => {
       ],
       player: { x: 1.5, z: 0.5, yaw: 1, pitch: 0 },
     })!;
-    // 旧版本布局会补上 AI 工作台
-    expect(l.furniture.map((f) => f.type)).toEqual(["bookshelf", "aibench", "pond", "jukebox"]);
+    // 旧版本布局会补上 AI 工作台、鱼塘、留声机和它旁边的唱片架
+    expect(l.furniture.map((f) => f.type)).toEqual(["bookshelf", "aibench", "pond", "jukebox", "recordshelf"]);
+    const jb = l.furniture[3], rs = l.furniture[4];
+    expect(rs.z).toBe(jb.z);
+    expect(rs.rot).toBe(jb.rot);
     expect(l.env).toEqual(DEFAULT_ENV);
     expect(l.furniture[0].shelf!.refs).toEqual(["a.md"]);
     expect(l.player.z).toBeGreaterThan(5);
     expect(parseLayout(null)).toBeNull();
+    // 留声机上的唱片记得住
+    expect(parseLayout({ ...l, deck: "a:夏日" })!.deck).toBe("a:夏日");
   });
 
   it("书架内容：文件夹书架包含子文件夹，虚拟书架跟随改名", () => {
