@@ -596,6 +596,48 @@ export class WorldEngine {
     return null;
   }
 
+  // ───────────── 录屏（宣传片、端到端测试）：停掉自带的循环，一帧一帧手动推进 ─────────────
+
+  /** 只设镜头位置，不渲染（录屏时每帧调用） */
+  setPose(x: number, y: number, z: number, yaw: number, pitch: number) {
+    this.pos.set(x, y, z);
+    this.body = { x, y, z, vy: 0, grounded: true };
+    this.yaw = yaw;
+    this.pitch = pitch;
+  }
+
+  /** 渲染分辨率倍数（录屏时降低，画面放大后更有像素感） */
+  setRenderScale(k: number) {
+    this.renderer.setPixelRatio(k);
+    this.resize();
+  }
+
+  /** 停下 / 恢复自带的渲染循环 */
+  setManualClock(on: boolean) {
+    if (on) {
+      this.running = false;
+      cancelAnimationFrame(this.raf);
+    } else if (!this.running) this.start();
+  }
+
+  /**
+   * 手动推进一帧：dt 秒（只在 setManualClock(true) 之后用）。
+   * physics=false 时镜头不受重力（摇臂、航拍镜头用 debugTeleport 的 y 控制高度）。
+   */
+  captureFrame(dt: number, opts: { physics?: boolean; hand?: boolean } = {}) {
+    const { physics = true, hand = true } = opts;
+    this.animate(dt);
+    if (this.explore) {
+      if (physics) this.step(dt);
+      this.updateCarpet();
+      this.applyCamera();
+      this.updateTarget();
+      this.hand.update(dt, this.walked, this.env.roomLight);
+      this.walked = 0;
+    }
+    this.render(hand && this.explore);
+  }
+
   /** 把玩家放到 (x, z) 附近能站的地方，脚落在地面上 */
   private placeBody(x: number, z: number) {
     const p = nearestFree(this.ground, x, z);

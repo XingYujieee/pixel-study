@@ -22,7 +22,11 @@ First-person pixel world · local-file writing · shares a vault with Obsidian
 
 </div>
 
-![Pixel Study in action](docs/assets/study-room.png)
+<p align="center">
+  <a href="docs/assets/intro.mp4"><img src="docs/assets/intro-teaser.gif" width="100%" alt="Pixel Study trailer preview" /></a>
+  <br />
+  <sub>▶ <a href="docs/assets/intro.mp4"><b>Watch the 45-second trailer (with sound)</b></a> · every frame is captured from the app itself; the music is synthesised in code</sub>
+</p>
 
 > Walk up to a shelf, pull out a note, sit down at the desk and keep writing. The room makes organising fun; the text is always a plain local file you already know.
 
@@ -71,6 +75,10 @@ The full feature tour (Chinese) is in [docs/功能导览.md](docs/功能导览.m
   <tr>
     <td><img src="docs/assets/editor-slash.png" alt="Slash command menu" /><br /><sub><b>Slash menu</b>: filter by typing, including pinyin initials</sub></td>
     <td><img src="docs/assets/word-editor.png" alt="Word editor" /><br /><sub><b>Word</b>: edit .docx right on the desk</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/records.png" alt="A record playing on the gramophone" /><br /><sub><b>Records</b>: carry a record to the gramophone and drop the needle</sub></td>
+    <td><img src="docs/assets/study-room.png" alt="The Japanese-style room theme" /><br /><sub><b>Room themes</b>: seven rooms, from a cabin to a lighthouse</sub></td>
   </tr>
 </table>
 
@@ -208,7 +216,7 @@ pixel-study/
 │   └── crates/
 │       ├── vault-core/      vault I/O, scanning, index, search, watcher, import
 │       └── ai-core/         LLM requests and tool calling, weather
-├── scripts/                 test-vault generator, browser end-to-end scripts
+├── scripts/                 test-vault generator, browser end-to-end scripts, trailer pipeline (promo/)
 └── docs/                    feature tour, checklist, PRD, test reports
 ```
 
