@@ -22,11 +22,10 @@ First-person pixel world · local-file writing · shares a vault with Obsidian
 
 </div>
 
-<p align="center">
-  <a href="docs/assets/intro.mp4"><img src="docs/assets/intro-teaser.gif" width="100%" alt="Pixel Study trailer preview" /></a>
-  <br />
-  <sub>▶ <a href="docs/assets/intro.mp4"><b>Watch the 45-second trailer (with sound)</b></a> · every frame is captured from the app itself; the music is synthesised in code</sub>
-</p>
+
+https://github.com/user-attachments/assets/21b77d5a-8789-4e97-9609-9d2b9c711492
+
+
 
 > Walk up to a shelf, pull out a note, sit down at the desk and keep writing. The room makes organising fun; the text is always a plain local file you already know.
 
